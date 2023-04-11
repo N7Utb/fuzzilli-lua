@@ -17,19 +17,19 @@
 import PackageDescription
 
 let package = Package(
-    name: "Fuzzilli",
+    name: "REPRLRun",
     platforms: [
         .macOS(.v10_13),
     ],
     products: [
-        .library(name: "Fuzzilli",targets: ["Fuzzilli"]),
+        // .library(name: "Fuzzilli",targets: ["Fuzzilli"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-protobuf.git", from: "1.6.0"),
     ],
     targets: [
-        .target(name: "libsocket",
-                dependencies: []),
+        // .target(name: "libsocket",
+        //         dependencies: []),
 
         .target(name: "libreprl",
                 dependencies: []),
@@ -39,34 +39,40 @@ let package = Package(
                 cSettings: [.unsafeFlags(["-O3"])],     // Using '-c release' when building uses '-O2', so '-O3' provides a performance gain
                 linkerSettings: [.linkedLibrary("rt", .when(platforms: [.linux]))]),
 
-        .target(name: "Fuzzilli",
+        // .target(name: "Fuzzilli",
+        //         dependencies: [
+        //             .product(name: "SwiftProtobuf", package: "swift-protobuf"),
+        //             "libsocket",
+        //             "libreprl",
+        //             "libcoverage"],
+        //         exclude: [
+        //             "Protobuf/sync.proto",
+        //             "Protobuf/operations.proto",
+        //             "Protobuf/program.proto",
+        //             "Protobuf/README.md"],
+        //         resources: [
+        //             // The ast.proto file is required by the node.js parser
+        //             .copy("Protobuf/ast.proto"),
+        //             .copy("Compiler/Parser")]),
+
+        .target(name:"Fuzzilli_Lua",
                 dependencies: [
-                    .product(name: "SwiftProtobuf", package: "swift-protobuf"),
-                    "libsocket",
                     "libreprl",
-                    "libcoverage"],
-                exclude: [
-                    "Protobuf/sync.proto",
-                    "Protobuf/operations.proto",
-                    "Protobuf/program.proto",
-                    "Protobuf/README.md"],
-                resources: [
-                    // The ast.proto file is required by the node.js parser
-                    .copy("Protobuf/ast.proto"),
-                    .copy("Compiler/Parser")]),
+                    "libcoverage"
+                ]),
 
         .target(name: "REPRLRun",
                 dependencies: ["libreprl"]),
 
-        .target(name: "FuzzilliCli",
-                dependencies: ["Fuzzilli"]),
+        // .target(name: "FuzzilliCli",
+        //         dependencies: ["Fuzzilli"]),
 
-        .target(name: "FuzzILTool",
-                dependencies: ["Fuzzilli"]),
+        // .target(name: "FuzzILTool",
+        //         dependencies: ["Fuzzilli"]),
 
-        .testTarget(name: "FuzzilliTests",
-                    dependencies: ["Fuzzilli"],
-                    resources: [.copy("CompilerTests")]),
+        // .testTarget(name: "FuzzilliTests",
+        //             dependencies: ["Fuzzilli"],
+        //             resources: [.copy("CompilerTests")]),
     ],
     swiftLanguageVersions: [.v5]
 )

@@ -153,7 +153,7 @@ public class Fuzzer {
     /// Fuzzer instances can be looked up from a dispatch queue through this key. See below.
     private static let dispatchQueueKey = DispatchSpecificKey<Fuzzer>()
 
-    /// Constructs a new fuzzer instance with the provided components.
+    /// Constructs a new fuzzer instance with the provided components. 
     public init(
         configuration: Configuration, scriptRunner: ScriptRunner, engine: FuzzEngine, mutators: WeightedList<Mutator>,
         codeGenerators: WeightedList<CodeGenerator>, programTemplates: WeightedList<ProgramTemplate>, evaluator: ProgramEvaluator,
