@@ -9,6 +9,12 @@ public final class Program {
     /// the "history" of a program.
     public private(set) var parent: Program? = nil
 
+    /// Comments attached to this program.
+    public var comments = ProgramComments()
+
+    /// Everything that contributed to this program. This is not preserved across protobuf serialization.
+    public var contributors = Contributors()
+
     /// Constructs an empty program.
     public init() {
         self.code = Code()
@@ -20,4 +26,13 @@ public final class Program {
         assert(code.isStaticallyValid())
         self.code = code
     }
+
+    /// Construct a program with the given code and type information.
+    public convenience init(code: Code, parent: Program? = nil, comments: ProgramComments = ProgramComments(), contributors: Contributors = Contributors()) {
+        self.init(with: code)
+        self.comments = comments
+        self.contributors = contributors
+        self.parent = parent
+    }
+
 }

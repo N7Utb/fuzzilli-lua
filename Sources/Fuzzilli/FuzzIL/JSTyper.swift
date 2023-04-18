@@ -69,7 +69,7 @@ public struct JSTyper: Analyzer {
     public mutating func analyze(_ instr: Instruction) {
         assert(instr.index == indexOfLastInstruction + 1)
         indexOfLastInstruction += 1
-
+    
         // Reset type changes array before instruction execution.
         typeChanges = []
 
@@ -244,7 +244,7 @@ public struct JSTyper: Analyzer {
             // with a default state.
             state.removeFirstBlockFromCurrentGroup()
             state.enterConditionallyExecutingBlock(typeChanges: &typeChanges)
-        case .endSwitchCase:
+        case .endSwitchCase: 
             break
         case .endSwitch:
             state.endGroupOfConditionallyExecutingBlocks(typeChanges: &typeChanges)

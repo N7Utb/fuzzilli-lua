@@ -202,4 +202,19 @@ class REPRLExecution: Execution {
         }
         return cachedFuzzout!
     }
+
+}
+
+extension REPRLExecution:CustomStringConvertible{
+    public func format(abbreviate: Bool) -> String {
+        return "stdout: \n" + stdout + "stderr: \n" + stderr + "fuzzout: \n" + fuzzout
+    }    
+
+    public var description: String {
+        return format(abbreviate: false)
+    }
+
+    public var abbreviated: String {
+        return format(abbreviate: true)
+    }
 }

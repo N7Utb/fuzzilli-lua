@@ -169,12 +169,20 @@ public class Fuzzer {
         assert(runner.isInitialized)
 
         let script = lifter.lift(program)
-
+        print(script)
         dispatchEvent(events.PreExecute, data: program)
         let execution = runner.run(script, withTimeout: timeout ?? config.timeout)
         dispatchEvent(events.PostExecute, data: execution)
 
         return execution
+    }
+
+    /// Constructs a new ProgramBuilder using this fuzzing context.
+    public func makeBuilder(forMutating parent: Program? = nil) -> ProgramBuilder {
+        dispatchPrecondition(condition: .onQueue(queue))
+        // Program ancestor chains are only constructed if inspection mode is enabled
+        let parent = config.enableInspection ? parent : nil
+        return ProgramBuilder(for: self, parent: parent)
     }
 
     /// Shuts down this fuzzer.

@@ -41,7 +41,8 @@ public enum ExecutionOutcome: CustomStringConvertible, Equatable, Hashable {
             return false
         }
     }
-}
+}   
+
 
 /// The result of executing a program.
 public protocol Execution {

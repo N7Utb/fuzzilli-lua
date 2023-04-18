@@ -2366,7 +2366,7 @@ public class ProgramBuilder {
         if instr.isBlockStart {
             scopes.push([])
         }
-
+        
         scopes.top.append(contentsOf: instr.innerOutputs)
         variablesInScope.append(contentsOf: instr.innerOutputs)
     }

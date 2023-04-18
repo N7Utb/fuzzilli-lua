@@ -28,8 +28,8 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-protobuf.git", from: "1.6.0"),
     ],
     targets: [
-        // .target(name: "libsocket",
-        //         dependencies: []),
+        .target(name: "libsocket",
+                dependencies: []),
 
         .target(name: "libreprl",
                 dependencies: []),
@@ -39,21 +39,21 @@ let package = Package(
                 cSettings: [.unsafeFlags(["-O3"])],     // Using '-c release' when building uses '-O2', so '-O3' provides a performance gain
                 linkerSettings: [.linkedLibrary("rt", .when(platforms: [.linux]))]),
 
-        // .target(name: "Fuzzilli",
-        //         dependencies: [
-        //             .product(name: "SwiftProtobuf", package: "swift-protobuf"),
-        //             "libsocket",
-        //             "libreprl",
-        //             "libcoverage"],
-        //         exclude: [
-        //             "Protobuf/sync.proto",
-        //             "Protobuf/operations.proto",
-        //             "Protobuf/program.proto",
-        //             "Protobuf/README.md"],
-        //         resources: [
-        //             // The ast.proto file is required by the node.js parser
-        //             .copy("Protobuf/ast.proto"),
-        //             .copy("Compiler/Parser")]),
+        .target(name: "Fuzzilli",
+                dependencies: [
+                    .product(name: "SwiftProtobuf", package: "swift-protobuf"),
+                    "libsocket",
+                    "libreprl",
+                    "libcoverage"],
+                exclude: [
+                    "Protobuf/sync.proto",
+                    "Protobuf/operations.proto",
+                    "Protobuf/program.proto",
+                    "Protobuf/README.md"],
+                resources: [
+                    // The ast.proto file is required by the node.js parser
+                    .copy("Protobuf/ast.proto"),
+                    .copy("Compiler/Parser")]),
 
         .target(name:"Fuzzilli_Lua",
                 dependencies: [

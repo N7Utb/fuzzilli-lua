@@ -60,7 +60,7 @@
 //     }
 // }
 
-// extension Instruction {
+extension Instruction {
 //     /// Returns true if this operation could mutate the given input variable when executed.
 //     func mayMutate(_ v: Variable) -> Bool {
 //         for (idx, input) in inputs.enumerated() {
@@ -85,17 +85,17 @@
 //         return false
 //     }
 
-//     /// Returns true if this operation reassigns the given variable.
-//     func reassigns(_ v: Variable) -> Bool {
-//         for (idx, input) in inputs.enumerated() {
-//             if input == v {
-//                 if op.reassigns(input: idx) {
-//                     return true
-//                 }
-//             }
-//         }
-//         return false
-//     }
+    /// Returns true if this operation reassigns the given variable.
+    // func reassigns(_ v: Variable) -> Bool {
+    //     for (idx, input) in inputs.enumerated() {
+    //         if input == v {
+    //             if op.reassigns(input: idx) {
+    //                 return true
+    //             }
+    //         }
+    //     }
+    //     return false
+    // }
 
 //     /// Returns true if the this and the given instruction can be folded into one.
 //     /// This is generally possible if they are identical and pure, i.e. don't have side-effects.
@@ -127,7 +127,7 @@
 //         assert(!canFold || isPure)
 //         return canFold
 //     }
-// }
+}
 
 extension Operation {
     func isMatchingEnd(for beginOp: Operation) -> Bool {

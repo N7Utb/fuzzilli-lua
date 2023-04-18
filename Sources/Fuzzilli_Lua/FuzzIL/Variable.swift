@@ -19,9 +19,12 @@
 public struct Variable: Hashable, CustomStringConvertible {
     // We assume that programs will always have less than 64k variables
     private let num: UInt16
+    // the variable is Local or Global
+    private var islocal: Bool = false
 
-    public init(number: Int) {
+    public init(number: Int, isLocal: Bool = false) {
         self.num = UInt16(number)
+        self.islocal = isLocal
     }
 
     public var number: Int {
@@ -38,6 +41,9 @@ public struct Variable: Hashable, CustomStringConvertible {
 
     public static func isValidVariableNumber(_ number: Int) -> Bool {
         return UInt16(exactly: number) != nil
+    }
+    public func isLocal() -> Bool {
+        return self.islocal
     }
 }
 
