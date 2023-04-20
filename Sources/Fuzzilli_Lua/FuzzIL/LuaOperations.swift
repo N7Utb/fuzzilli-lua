@@ -55,7 +55,8 @@ final class BeginFunction: Operation{
         super.init(numInputs: 0, 
                    numOutputs: 1, 
                    numInnerOutputs: parameters.count, 
-                   attributes: attributes)
+                   attributes: attributes,
+                   contextOpened: [.script, .subroutine])
     }
 }
 
@@ -70,7 +71,9 @@ public enum UnaryOperator: String, CaseIterable {
     case LogicalNot = "not"
     case Minus      = "-"
     case Length     = "#"
-
+    static let strop :[UnaryOperator] = [.Length]
+    static let numop: [UnaryOperator] = [.Minus]
+    static let allop :[UnaryOperator] = [LogicalNot]
     var token: String {
         return self.rawValue.trimmingCharacters(in: [" "])
     }
@@ -106,7 +109,9 @@ public enum BinaryOperator: String, CaseIterable {
     case Exp      = "^"
     case Concat   = ".."
     case Divisible = "//"
-
+    static let strop :[BinaryOperator] = [.Concat]
+    static let numop :[BinaryOperator] = [.Add, .Sub, .Mul, .Div, .Mod, .Divisible]
+    static let allop :[BinaryOperator] = [.LogicAnd, .LogicOr]
     var token: String {
         return self.rawValue
     }
@@ -131,7 +136,9 @@ public enum Comparator: String, CaseIterable {
     case lessThanOrEqual    = "<="
     case greaterThan        = ">"
     case greaterThanOrEqual = ">="
-
+    static let allop :[Comparator] = [.equal, .notEqual]
+    static let numop :[Comparator] = [.lessThan, lessThanOrEqual, greaterThan, .greaterThanOrEqual]
+    static let strop :[Comparator] = [.lessThan, lessThanOrEqual, greaterThan, .greaterThanOrEqual]
     var token: String {
         return self.rawValue
     }
@@ -156,7 +163,7 @@ final class Return: Operation{
     }
 
     init(numInputs: Int) {
-        super.init(numInputs: numInputs, attributes: [.isJump])
+        super.init(numInputs: numInputs, attributes: [.isJump],requiredContext: [.script, .subroutine])
     }
 }
 
@@ -178,5 +185,14 @@ final class CallFunction: Operation {
     init(numArguments: Int, numReturns: Int)
     {
         super.init(numInputs:numArguments + 1, numOutputs: numReturns, firstVariadicInput: 1, attributes: [.isVariadic, .isCall])
+    }
+}
+
+/// Internal operations.
+///
+/// These can be used for internal fuzzer operations but will not appear in the corpus.
+class LuaInternalOperation: Operation {
+    init(numInputs: Int) {
+        super.init(numInputs: numInputs, attributes: [.isInternal])
     }
 }

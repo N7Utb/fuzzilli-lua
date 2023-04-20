@@ -15,34 +15,35 @@
 
 // Miscellaneous semantics of FuzzIL. Also see JSTyper for execution semantics of operations.
 
-// extension Operation {
-//     /// Returns true if this operation could mutate its ith input.
-//     func mayMutate(input inputIdx: Int) -> Bool {
-//         if reassigns(input: inputIdx) {
-//             return true
-//         }
+extension Operation {
+    /// Returns true if this operation could mutate its ith input.
+    func mayMutate(input inputIdx: Int) -> Bool {
+        /// TODO: reassign
+        // if reassigns(input: inputIdx) {
+        //     return true
+        // }
 
-//         switch opcode {
-//         case .callFunction,
-//              .callMethod,
-//              .callComputedMethod:
-//              // We assume that a constructor doesn't modify its arguments when called.
-//             return true
-//         case .setProperty,
-//              .updateProperty,
-//              .setElement,
-//              .updateElement,
-//              .setComputedProperty,
-//              .updateComputedProperty,
-//              .yield,
-//              .deleteProperty,
-//              .deleteComputedProperty,
-//              .deleteElement:
-//             return inputIdx == 0
-//         default:
-//             return false
-//         }
-//     }
+        switch opcode {
+        case .callFunction:
+            //  .callMethod,
+            //  .callComputedMethod:
+             // We assume that a constructor doesn't modify its arguments when called.
+            return true
+        // case .setProperty,
+        //      .updateProperty,
+        //      .setElement,
+        //      .updateElement,
+        //      .setComputedProperty,
+        //      .updateComputedProperty,
+        //      .yield,
+        //      .deleteProperty,
+        //      .deleteComputedProperty,
+        //      .deleteElement:
+        //     return inputIdx == 0
+        default:
+            return false
+        }
+    }
 
 //     func reassigns(input inputIdx: Int) -> Bool {
 //         switch opcode {
@@ -58,32 +59,32 @@
 //             return false
 //         }
 //     }
-// }
+}
 
 extension Instruction {
-//     /// Returns true if this operation could mutate the given input variable when executed.
-//     func mayMutate(_ v: Variable) -> Bool {
-//         for (idx, input) in inputs.enumerated() {
-//             if input == v {
-//                 if op.mayMutate(input: idx) {
-//                     return true
-//                 }
-//             }
-//         }
-//         return false
-//     }
+    /// Returns true if this operation could mutate the given input variable when executed.
+    func mayMutate(_ v: Variable) -> Bool {
+        for (idx, input) in inputs.enumerated() {
+            if input == v {
+                if op.mayMutate(input: idx) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
 
-//     /// Returns true if this operation could mutate any of the given input variables when executed.
-//     func mayMutate(anyOf vars: VariableSet) -> Bool {
-//         for (idx, input) in inputs.enumerated() {
-//             if vars.contains(input) {
-//                 if op.mayMutate(input: idx) {
-//                     return true
-//                 }
-//             }
-//         }
-//         return false
-//     }
+    /// Returns true if this operation could mutate any of the given input variables when executed.
+    func mayMutate(anyOf vars: VariableSet) -> Bool {
+        for (idx, input) in inputs.enumerated() {
+            if vars.contains(input) {
+                if op.mayMutate(input: idx) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
 
     /// Returns true if this operation reassigns the given variable.
     // func reassigns(_ v: Variable) -> Bool {

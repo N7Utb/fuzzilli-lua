@@ -21,7 +21,7 @@ public struct Context: OptionSet {
     }
 
     // Default javascript context.
-    public static let javascript        = Context(rawValue: 1 << 0)
+    public static let script        = Context(rawValue: 1 << 0)
     // Inside a subroutine (function, constructor, method, ...) definition.
     // This for example means that doing `return` or accessing `arguments` is allowed.
     public static let subroutine        = Context(rawValue: 1 << 1)

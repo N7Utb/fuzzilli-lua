@@ -23,7 +23,7 @@
 ///     myStack.top.changeValue()
 ///
 public struct Stack<Element> {
-    private var buffer: [Element]
+    public var buffer: [Element]
 
     public init() {
         self.buffer = []

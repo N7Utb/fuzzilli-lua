@@ -98,3 +98,37 @@ struct DefUseAnalyzer: Analyzer {
         return uses[variable]!.count
     }
 }
+
+struct ContextAnalyzer: Analyzer{
+    private var contextStack = Stack([Context.script])
+
+    var context: Context {
+        return contextStack.top
+    }
+
+    mutating func analyze(_ instr: Instruction) {
+        if instr.isBlockEnd {
+            contextStack.pop()
+        }
+        if instr.isBlockStart {
+            var newContext = instr.op.contextOpened
+            if instr.propagatesSurroundingContext {
+                newContext.formUnion(context)
+            }
+
+            // If we resume the context analysis, we currently take the second to last context.
+            // This currently only works if we have a single layer of these instructions.
+            if instr.skipsSurroundingContext {
+                assert(!instr.propagatesSurroundingContext)
+                assert(contextStack.count >= 2)
+
+                // Currently we only support context "skipping" for switch blocks. This logic may need to be refined if it is ever used for other constructs as well.
+                assert(contextStack.top.contains(.switchBlock) && contextStack.top.subtracting(.switchBlock) == .empty)
+
+                newContext.formUnion(contextStack.secondToTop)
+            }
+            contextStack.push(newContext)
+        }
+    }
+
+}

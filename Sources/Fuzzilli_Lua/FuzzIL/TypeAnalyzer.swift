@@ -1,4 +1,6 @@
 public struct TypeAnaylzer: Analyzer {
+    // The environment model from which to obtain various pieces of type information.
+    private let environment: Environment
 
     // The current state
     private var state = AnalyzerState()
@@ -13,7 +15,9 @@ public struct TypeAnaylzer: Analyzer {
     // The index of the last instruction that was processed. Just used for debug assertions.
     private var indexOfLastInstruction = -1
 
-
+    init(for environ: Environment) {
+        self.environment = environ
+    }
 
     public mutating func reset() {
         indexOfLastInstruction = -1
@@ -37,8 +41,6 @@ public struct TypeAnaylzer: Analyzer {
         processScopeChanges(instr)
 
         processTypeChangesAfterScopeChanges(instr)
-        //! DEBUG
-        print(typeChanges)
         // Sanity checking: every output variable must now have a type.
         assert(instr.allOutputs.allSatisfy(state.hasType))
 

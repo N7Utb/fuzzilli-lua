@@ -6,7 +6,8 @@ Package.resolved
 .vscode
 .*.sw?
 .swiftpm
-
+/Sources/Fuzzilli
+/Sources/FuzzilliCli
 # custom GCE configuration
 Cloud/GCE/config.sh
 

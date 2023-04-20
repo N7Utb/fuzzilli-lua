@@ -57,16 +57,21 @@ let package = Package(
 
         .target(name:"Fuzzilli_Lua",
                 dependencies: [
+                    .product(name: "SwiftProtobuf", package: "swift-protobuf"),
                     "libreprl",
                     "libcoverage"
-                ]),
+                ],
+                exclude: [
+                    "Protobuf/sync.proto"]
+                ),
 
         .target(name: "REPRLRun",
                 dependencies: ["libreprl"]),
 
-        // .target(name: "FuzzilliCli",
-        //         dependencies: ["Fuzzilli"]),
-
+        .target(name: "FuzzilliCli_Lua",
+                dependencies: ["Fuzzilli_Lua"]),
+        .target(name: "FuzzilliCli",
+                dependencies: ["Fuzzilli"]),
         // .target(name: "FuzzILTool",
         //         dependencies: ["Fuzzilli"]),
 

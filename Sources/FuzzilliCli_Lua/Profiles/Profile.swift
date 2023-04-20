@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+import Fuzzilli_Lua
 
 struct Profile {
     let processArgs: [String]
@@ -26,10 +27,10 @@ struct Profile {
     // Used to verify that crashes can be detected.
     // let crashTests: [String]
 
-    // let additionalCodeGenerators: [(CodeGenerator, Int)]
+    let additionalCodeGenerators: [(CodeGenerator, Int)]
     // let additionalProgramTemplates: WeightedList<ProgramTemplate>
 
-    // let disabledCodeGenerators: [String]
+    let disabledCodeGenerators: [String]
 
     // let additionalBuiltins: [String: JSType]
 }
