@@ -49,10 +49,9 @@ struct DefUseAnalyzer: Analyzer {
         for v in instr.inputs {
             assert(uses.contains(v))
             uses[v]?.append(instr.index)
-            /// TODO: Reassigns Analyze
-            // if instr.reassigns(v) {
-            //     assignments[v]?.append(instr.index)
-            // }
+            if instr.reassigns(v) {
+                assignments[v]?.append(instr.index)
+            }
         }
     }
 
@@ -132,3 +131,53 @@ struct ContextAnalyzer: Analyzer{
     }
 
 }
+
+/// Keeps track of currently visible variables during program construction.
+struct VariableAnalyzer: Analyzer {
+    private(set) var visibleVariables = [Variable]()
+    private(set) var scopes = Stack<Int>([0])
+
+    mutating func analyze(_ instr: Instruction) {
+        // Scope management (1).
+        if instr.isBlockEnd {
+            assert(scopes.count > 0, "Trying to end a scope that was never started")
+            let variablesInClosedScope = scopes.pop()
+            visibleVariables.removeLast(variablesInClosedScope)
+        }
+
+        scopes.top += instr.numOutputs
+        visibleVariables.append(contentsOf: instr.outputs)
+
+        // Scope management (2). Happens here since e.g. function definitions create a variable in the outer scope.
+        // This code has to be somewhat careful since e.g. BeginElse both ends and begins a variable scope.
+        if instr.isBlockStart {
+            scopes.push(0)
+        }
+
+        scopes.top += instr.numInnerOutputs
+        visibleVariables.append(contentsOf: instr.innerOutputs)
+    }
+}
+
+/// Determines whether code after the current instruction is dead code (i.e. can never be executed).
+struct DeadCodeAnalyzer: Analyzer {
+    private var depth = 0
+
+    var currentlyInDeadCode: Bool {
+        return depth != 0
+    }
+
+    mutating func analyze(_ instr: Instruction) {
+        if instr.isBlockEnd && currentlyInDeadCode {
+            depth -= 1
+        }
+        if instr.isBlockStart && currentlyInDeadCode {
+            depth += 1
+        }
+        if instr.isJump && !currentlyInDeadCode {
+            depth = 1
+        }
+        assert(depth >= 0)
+    }
+}
+

@@ -112,12 +112,17 @@ public struct LuaType: Hashable {
     /// An number type.
     public static let number   = LuaType(definiteType: .number)
 
+    /// A type that can be iterated over, such as an array or a generator.
+    public static let iterable  = LuaType(definiteType: .iterable)
+
     /// A string.
     public static let string    = LuaType(definiteType: .string)
 
     /// A boolean.
     public static let boolean   = LuaType(definiteType: .boolean)
 
+    /// A type that can be iterated over, such as an array or a generator.
+    public static let table     = table(ofGroup: "table", withProperties: [], withMethods: [])
 
     /// The type that subsumes all others.
     public static let anything  = LuaType(definiteType: .nothing, possibleType: .anything)
@@ -143,8 +148,8 @@ public struct LuaType: Hashable {
     }
 
     /// A table
-    public static func table(withProperties properties: [String] = [], withMethods methods: [String] = []) -> LuaType{
-        let ext = TypeExtension(properties: Set(properties), methods: Set(methods), signature: nil)
+    public static func table(ofGroup group: String? = nil, withArrayType arraytype: [LuaType] = [], withProperties properties: [String] = [], withMethods methods: [String] = []) -> LuaType{
+        let ext = TypeExtension(group: group, arraytype: arraytype, properties: Set(properties), methods: Set(methods), signature: nil)
         return LuaType(definiteType: [.table], ext: ext)
     }
     //
@@ -255,9 +260,9 @@ public struct LuaType: Hashable {
 
         // Either our type must be a generic callable without a signature, or our signature must subsume the other type's signature.
         /// TODO: signature subsume
-        // guard signature == nil || (other.signature != nil && signature!.subsumes(other.signature!)) else {
-        //     return false
-        // }
+        guard signature == nil || (other.signature != nil && signature!.subsumes(other.signature!)) else {
+            return false
+        }
 
         // The other object can have more properties/methods, but it must
         // have at least the ones we have for us to be a supertype.
@@ -303,6 +308,18 @@ public struct LuaType: Hashable {
 
     public var methods: Set<String> {
         return ext?.methods ?? Set()
+    }
+
+    public var arraytype: [LuaType] {
+        return ext?.arraytype ?? []
+    }
+    
+    public var additionalproperties: [String:LuaType]{
+        return ext?.additionalproperties ?? [:]
+    }
+
+    public var additionalmethods: [String:Signature] {
+        return ext?.additionalmethods ?? [:]
     }
 
     public var numProperties: Int {
@@ -520,19 +537,21 @@ public struct LuaType: Hashable {
     //
 
     /// Returns a new type that represents this type with the added property.
-    public func adding(property: String) -> LuaType {
+    public func adding(property: String, propertyType: LuaType) -> LuaType {
         guard Is(.table()) else {
             return self
         }
         var newProperties = properties
         newProperties.insert(property)
-        let newExt = TypeExtension(group: group, properties: newProperties, methods: methods, signature: signature)
+        var newadditionalPropertyies = additionalproperties
+        newadditionalPropertyies[property] = propertyType
+        let newExt = TypeExtension(group: group, properties: newProperties, methods: methods, signature: signature,additionalproperties: newadditionalPropertyies, additionalmethods: additionalmethods)
         return LuaType(definiteType: definiteType, possibleType: possibleType, ext: newExt)
     }
 
     /// Adds a property to this type.
-    public mutating func add(property: String) {
-        self = self.adding(property: property)
+    public mutating func add(property: String, propertyType: LuaType) {
+        self = self.adding(property: property, propertyType: propertyType)
     }
 
     /// Returns a new ObjectType that represents this type without the removed property.
@@ -542,7 +561,9 @@ public struct LuaType: Hashable {
         }
         var newProperties = properties
         newProperties.remove(property)
-        let newExt = TypeExtension(group: group, properties: newProperties, methods: methods, signature: signature)
+        var newadditionalPropertyies = additionalproperties
+        newadditionalPropertyies.removeValue(forKey: property)
+        let newExt = TypeExtension(group: group, properties: newProperties, methods: methods, signature: signature,additionalproperties: newadditionalPropertyies, additionalmethods: additionalmethods)
         return LuaType(definiteType: definiteType, possibleType: possibleType, ext: newExt)
     }
 
@@ -654,6 +675,8 @@ extension LuaType: CustomStringConvertible {
             return ".userdata"
         case .thread:
             return "thread"
+        case .iterable:
+            return ".iterable"
         case .function:
             if let signature = functionSignature {
                 return ".function(\(signature.format(abbreviate: abbreviate)))"
@@ -661,7 +684,56 @@ extension LuaType: CustomStringConvertible {
                 return ".function()"
             }
         case .table:
-            return ".table"
+            var params: [String] = []
+            if let group = group {
+                params.append("ofGroup: \(group)")
+            }
+            if !arraytype.isEmpty{
+                if abbreviate && arraytype.count > 5 {
+                    let selection = arraytype.prefix(3).map { "\"\($0)\"" }
+                    params.append("withArrayTypes: [\(selection.joined(separator: ", ")), ...]")
+                } else {
+                    params.append("withArrayTypes: \(arraytype)")
+                }
+
+            }
+            
+            if !properties.isEmpty {
+                if abbreviate && properties.count > 5 {
+                    let selection = properties.prefix(3).map { "\"\($0)\"" }
+                    params.append("withProperties: [\(selection.joined(separator: ", ")), ...]")
+                } else {
+                    params.append("withProperties: \(properties)")
+                }
+            }
+
+            if !methods.isEmpty {
+                if abbreviate && methods.count > 5 {
+                    let selection = methods.prefix(3).map { "\"\($0)\"" }
+                    params.append("withMethods: [\(selection.joined(separator: ", ")), ...]")
+                } else {
+                    params.append("withMethods: \(methods)")
+                }
+            }
+
+            if !additionalproperties.isEmpty {
+                if abbreviate && additionalproperties.count > 5 {
+                    let selection = additionalproperties.prefix(3).map { "\"\($0)\"" }
+                    params.append("withAdditionalProperties: [\(selection.joined(separator: ", ")), ...]")
+                } else {
+                    params.append("withAdditionalProperties: \(additionalproperties)")
+                }
+            }
+
+            if !additionalmethods.isEmpty {
+                if abbreviate && additionalmethods.count > 5 {
+                    let selection = additionalmethods.prefix(3).map { "\"\($0)\"" }
+                    params.append("withAdditionalMethods: [\(selection.joined(separator: ", ")), ...]")
+                } else {
+                    params.append("withAdditionalMethods: \(additionalmethods)")
+                }
+            }
+            return ".table(\(params.joined(separator: ",")))"
         default:
             break
         }
@@ -704,9 +776,10 @@ struct BaseType: OptionSet, Hashable {
     static let function    = BaseType(rawValue: 1 << 5)
     static let thread      = BaseType(rawValue: 1 << 6)
     static let table       = BaseType(rawValue: 1 << 7)
-    static let anything    = BaseType([.undefined,.string, .boolean, .userdata, .function, .thread, .table])
+    static let iterable    = BaseType(rawValue: 1 << 8)
+    static let anything    = BaseType([.undefined,.string, .boolean, .userdata, .function, .thread, .table,.iterable])
 
-    static let allBaseTypes: [BaseType] = [.undefined,.string, .boolean, .userdata, .function, .thread, .table]
+    static let allBaseTypes: [BaseType] = [.undefined,.string, .boolean, .userdata, .function, .thread, .table, .iterable]
 }
 
 class TypeExtension: Hashable {
@@ -714,6 +787,10 @@ class TypeExtension: Hashable {
     let properties: Set<String>
     let methods: Set<String>
 
+    let arraytype: [LuaType]
+
+    let additionalproperties: [String: LuaType]
+    let additionalmethods: [String: Signature]
     // The group name. Basically each group is its own sub type of the object type.
     // (For now), there is no subtyping for group: if two objects have a different
     // group then there is no subsumption relationship between them.
@@ -722,7 +799,7 @@ class TypeExtension: Hashable {
     // The function signature. Will only be != nil if isFunction or isConstructor is true.
     let signature: Signature?
 
-    init?(group: String? = nil, properties: Set<String>, methods: Set<String>, signature: Signature?) {
+    init?(group: String? = nil, arraytype: [LuaType] = [], properties: Set<String>, methods: Set<String>, signature: Signature?, additionalproperties: [String:LuaType] = [:],  additionalmethods: [String:Signature] = [:]) {
         if group == nil && properties.isEmpty && methods.isEmpty && signature == nil {
             return nil
         }
@@ -730,7 +807,10 @@ class TypeExtension: Hashable {
         self.properties = properties
         self.methods = methods
         self.group = group
+        self.arraytype = arraytype
         self.signature = signature
+        self.additionalmethods = additionalmethods
+        self.additionalproperties = additionalproperties
     }
 
     static func ==(lhs: TypeExtension, rhs: TypeExtension) -> Bool {

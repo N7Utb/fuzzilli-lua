@@ -4,6 +4,17 @@ import Foundation
 public class LuaLifter: Lifter {
     public init() {}
 
+    /// Stack of for-loop header parts. A for-loop's header consists of three different blocks (initializer, condition, afterthought), which
+    /// are lifted independently but should then typically be combined into a single line. This helper stack makes that possible.
+    struct ForLoopHeader {
+        var initializer = ""
+        var condition = ""
+        // No need for the afterthought string since this struct will be consumed
+        // by the handler for the afterthought block.
+        var loopVariables = [String]()
+    }
+    private var forLoopHeaderStack = Stack<ForLoopHeader>()
+
 
 
     public func lift(_ program: Program, withOptions options: LiftingOptions) -> String {
@@ -62,8 +73,60 @@ public class LuaLifter: Lifter {
                 assert(identifier.type === Identifier)
                 return identifier
             }
-
             switch instr.op.opcode {
+            case .loadBuiltin(let op):
+                w.assign(Identifier.new(op.builtinName), to: instr.output)
+            case .getProperty(let op):
+                let obj = input(0)
+                let accessOperator = "."
+                let expr = MemberExpression.new() + obj + accessOperator + op.propertyName
+                w.assign(expr, to: instr.output)
+            case .setProperty(let op):
+                // For aesthetic reasons, we don't want to inline the lhs of an assignment, so force it to be stored in a variable.
+                let obj = inputAsIdentifier(0)
+                let PROPERTY = MemberExpression.new() + obj + "." + op.propertyName
+                let VALUE = input(1)
+                w.emit("\(PROPERTY) = \(VALUE);")
+            case .updateProperty(let op):
+                // For aesthetic reasons, we don't want to inline the lhs of an assignment, so force it to be stored in a variable.
+                let obj = inputAsIdentifier(0)
+                let PROPERTY = MemberExpression.new() + obj + "." + op.propertyName
+                let VALUE = input(1) 
+                w.emit("\(PROPERTY) = \(PROPERTY) \(op.op.token) \(VALUE);")
+            case .deleteProperty(let op):
+                // For aesthetic reasons, we don't want to inline the lhs of a property deletion, so force it to be stored in a variable.
+                let obj = inputAsIdentifier(0)
+                let accessOperator = "."
+                let target = MemberExpression.new() + obj + accessOperator + op.propertyName
+                w.emit("\(target) = nil;")
+
+            case .getElement(let op):
+                let obj = input(0)
+                let accessOperator = "["
+                let expr = MemberExpression.new() + obj + accessOperator + op.index + "]"
+                w.assign(expr, to: instr.output)
+
+            case .setElement(let op):
+                // For aesthetic reasons, we don't want to inline the lhs of an assignment, so force it to be stored in a variable.
+                let obj = inputAsIdentifier(0)
+                let ELEMENT = MemberExpression.new() + obj + "[" + op.index + "]"
+                let VALUE = input(1)
+                w.emit("\(ELEMENT) = \(VALUE);")
+
+            case .updateElement(let op):
+                // For aesthetic reasons, we don't want to inline the lhs of an assignment, so force it to be stored in a variable.
+                let obj = inputAsIdentifier(0)
+                let ELEMENT = MemberExpression.new() + obj + "[" + op.index + "]"
+                let VALUE = input(1)
+                w.emit("\(ELEMENT) \(op.op.token)= \(VALUE);")
+
+            case .deleteElement(let op):
+                // For aesthetic reasons, we don't want to inline the lhs of an element deletion, so force it to be stored in a variable.
+                let obj = inputAsIdentifier(0)
+                let accessOperator = "["
+                let target = MemberExpression.new() + obj + accessOperator + op.index + "]"
+                w.emit("\(target) = nil;")
+            
             case .loadNumber(let op):
                 w.assign(NumberLiteral.new(String(op.value)), to: instr.output)
             case .loadString(let op):
@@ -72,11 +135,32 @@ public class LuaLifter: Lifter {
                 w.assign(Literal.new(op.value ? "true" : "false"), to: instr.output)
             case .loadNil:
                 w.assign(Literal.new("nil"), to: instr.output)
+            case .loadPair:
+                withEqualProbability({
+                    w.assign(Literal.new("pairs(\(input(0)))"), to: instr.output)
+                },{
+                    w.assign(Literal.new("ipairs(\(input(0)))"), to: instr.output)
+                })
+                
             case .beginFunction:
                 liftFunctionDefinitionBegin(instr, keyword: "function", using: &w)
             case .endFunction:
                 w.leaveCurrentBlock()
                 w.emit("end")
+
+            case .callMethod(let op):
+                let obj = input(0)
+                let accessOperator = "."
+                let method = MemberExpression.new() + obj + accessOperator + op.methodName
+                let args = inputs.dropFirst()
+                let expr = CallExpression.new() + method + "(" + liftCallArguments(args) + ")"
+                if instr.numOutputs != 0{
+                    let outputs = w.declareAll(instr.outputs).joined(separator: ", ")
+                    w.emit("\(outputs) = \(expr);")
+                }
+                else{
+                    w.emit("\(expr)")
+                }
             case .unaryOperation(let op):
                 let input = input(0)
                 let expr: Expression
@@ -91,6 +175,16 @@ public class LuaLifter: Lifter {
                 let rhs = input(1)
                 let expr = BinaryExpression.new() + lhs + " " + op.op.token + " " + rhs
                 w.assign(expr, to: instr.output)
+            case .reassign:
+                let dest = input(0)
+                assert(dest.type === Identifier)
+                let expr = AssignmentExpression.new() + dest + " = " + input(1)
+                w.reassign(instr.input(0), to: expr)
+            case .update(let op):
+                let dest = input(0)
+                assert(dest.type === Identifier)
+                let expr = AssignmentExpression.new() + dest + " = " + dest + " \(op.op.token) " + input(1)
+                w.reassign(instr.input(0), to: expr)
             case .compare(let op):
                 let lhs = input(0)
                 let rhs = input(1)
@@ -117,9 +211,130 @@ public class LuaLifter: Lifter {
                 else{
                     w.emit("\(expr)")
                 }
-                
+            case .beginIf(let op):
+                var COND = input(0)
+                if op.inverted {
+                    COND = UnaryExpression.new() + "not" + COND
+                }
+                w.emit("if (\(COND)) then")
+                w.enterNewBlock()
 
+            case .beginElse:
+                w.leaveCurrentBlock()
+                w.emit("else")
+                w.enterNewBlock()
 
+            case .endIf:
+                w.leaveCurrentBlock()
+                w.emit("end")
+            case .beginWhileLoopHeader:
+                // Must not inline across loop boundaries as that would change the program's semantics.
+                w.emitPendingExpressions()
+                handleBeginSingleExpressionContext(with: &w, initialIndentionLevel: 2)
+
+            case .beginWhileLoopBody:
+                let COND = handleEndSingleExpressionContext(result: input(0), with: &w)
+                w.emitBlock("while (\(COND)) do")
+                w.enterNewBlock()
+
+            case .endWhileLoop:
+                w.leaveCurrentBlock()
+                w.emit("end")
+            case .beginForLoopInitializer:
+                // While we could inline into the loop header, we probably don't want to do that as it will often lead
+                // to the initializer block becoming an arrow function, which is not very readable. So instead force
+                // all pending expressions to be emitted now, before the loop.
+                w.emitPendingExpressions()
+
+                // The loop initializer is a bit odd: it may be a single expression (`for (foo(); ...)`), but it
+                // could also be a variable declaration containing multiple expressions (`for (let i = X, j = Y; ...`).
+                // However, we'll figure this out at the end of the block in the .beginForLoopCondition case.
+                handleBeginSingleExpressionContext(with: &w, initialIndentionLevel: 2)
+
+            case .beginForLoopCondition:
+                let loopVars = w.declareAll(instr.innerOutputs, usePrefix: "i")
+                // The logic for a for-loop's initializer block is a little different from the lifting logic for other block headers.
+                let initializer: String
+
+                // In this case, the initializer declares one or more variables. We first try to lift the variable declarations
+                // as `let i = X, j = Y, ...`, however, this is _only_ possible if we have as many expressions as we have
+                // variables to declare _and_ if they are in the correct order.
+                // In particular, the following syntax is invalid: `let i = foo(), bar(), j = baz()` and so we cannot chain
+                // independent expressions using the comma operator as we do for the other loop headers.
+                // In all other cases, we lift the initializer to something like `let [i, j] = (() => { CODE })()`.
+                if w.isCurrentTemporaryBufferEmpty && w.numPendingExpressions == 0 {
+                    // The "good" case: we can emit `let i = X, j = Y, ...`
+                    assert(loopVars.count == inputs.count)
+                    // let declarations = zip(loopVars, inputs).map({ "\($0) = \($1)" }).joined(separator: ", ")
+                    initializer = "\(loopVars[0]) = \(input(0))"
+                    let code = w.popTemporaryOutputBuffer()
+                    assert(code.isEmpty)
+                } else {
+                    // In this case, we have to emit a temporary arrow function that returns all initial values in an array
+                    w.emitPendingExpressions()
+                    // Emit a `let i = (() => { ...; return X; })()`
+                    w.emit("return \(input(0));")
+                    let I = loopVars[0]
+                    let CODE = w.popTemporaryOutputBuffer()
+                    initializer = "\(I) = (function()\n\(CODE)end)()"
+                }
+
+                forLoopHeaderStack.push(ForLoopHeader(initializer: initializer, loopVariables: loopVars))
+                handleBeginSingleExpressionContext(with: &w, initialIndentionLevel: 2)
+
+            case .beginForLoopAfterthought:
+                var condition = handleEndSingleExpressionContext(result: input(0), with: &w)
+                // Small syntactic "optimization": an empty condition is always true, so we can replace the constant "true" with an empty condition.
+                if condition == "true" {
+                    condition = ""
+                }
+
+                forLoopHeaderStack.top.condition = condition
+                w.declareAll(instr.innerOutputs, as: forLoopHeaderStack.top.loopVariables)
+                handleBeginSingleExpressionContext(with: &w, initialIndentionLevel: 2)
+
+            case .beginForLoopBody:
+                let header = forLoopHeaderStack.pop()
+                let INITIALIZER = header.initializer
+                let CONDITION = header.condition
+                if instr.numInputs != 0{
+                    let AFTERTHOUGHT = handleEndSingleExpressionContext(result: input(0), with: &w)
+                    w.emitBlock("for \(INITIALIZER),\(CONDITION),\(AFTERTHOUGHT) do")
+                }
+                else {
+                    w.emit("for \(INITIALIZER),\(CONDITION) do")
+                }
+            
+                w.declareAll(instr.innerOutputs, as: header.loopVariables)
+                w.enterNewBlock()
+
+            case .endForLoop:
+                w.leaveCurrentBlock()
+                w.emit("end")
+
+            case .beginForInLoop:
+                let V = w.declareAll(instr.innerOutputs).joined(separator: ", ")
+                let OBJ = input(0)
+                w.emit("for \(V) in \(OBJ) do")
+                w.enterNewBlock()
+
+            case .endForInLoop:
+                w.leaveCurrentBlock()
+                w.emit("end")
+            case .createArray:
+                var elems = inputs.map({$0.text}).map({ $0 == "undefined" ? "" : $0 }).joined(separator: ",")
+                if elems.last == "," || (instr.inputs.count == 1 && elems == "") {
+                    // If the last element is supposed to be a hole, we need one additional comma
+                    elems += ","
+                }
+                w.assign(ArrayLiteral.new("{\(elems)}"), to: instr.output)
+            case .loopBreak(_):
+                //  .switchBreak:
+                w.emit("break;")
+            case .label(let op):
+                w.emit("::\(op.value)::")
+            case .goto(let op):
+                w.emit("goto \(op.value)")
             case .nop:
                 break
             }
@@ -140,6 +355,52 @@ public class LuaLifter: Lifter {
         // w.emitBlock(suffix)
         return w.code
     }
+
+    // Signal that the following code needs to be lifted into a single expression.
+    private func handleBeginSingleExpressionContext(with w: inout LuaWriter, initialIndentionLevel: Int) {
+        // Lift the following code into a temporary buffer so that it can either be emitted
+        // as a single expression, or as body of a temporary function, see below.
+        w.pushTemporaryOutputBuffer(initialIndentionLevel: initialIndentionLevel)
+    }
+
+    // Lift all code between the begin and end of the single expression context (e.g. a loop header) into a single expression.
+    // The optional result parameter contains the value to which the entire expression must ultimately evaluate.
+    private func handleEndSingleExpressionContext(result maybeResult: Expression? = nil, with w: inout LuaWriter) -> String {
+        if w.isCurrentTemporaryBufferEmpty {
+            // This means that the code consists entirely of expressions that can be inlined, and that the result
+            // variable is either not an inlined expression (but instead e.g. the identifier for a local variable), or that
+            // it is the most recent pending expression (in which case previously pending expressions are not emitted).
+            //
+            // In this case, we can emit a single expression by combining all pending expressions using the comma operator.
+            var COND = CommaExpression.new()
+            let expressions = w.takePendingExpressions() + (maybeResult != nil ? [maybeResult!] : [])
+            for expr in expressions {
+                if COND.text.isEmpty {
+                    COND = COND + expr
+                } else {
+                    COND = COND + ", " + expr
+                }
+            }
+
+            let headerContent = w.popTemporaryOutputBuffer()
+            assert(headerContent.isEmpty)
+
+            return COND.text
+        } 
+        else {
+            /// TODO: improper
+            // The code is more complicated, so emit a temporary function and call it.
+            w.emitPendingExpressions()
+            if let result = maybeResult {
+                w.emit("return \(result);")
+            }
+            let CODE = w.popTemporaryOutputBuffer()
+            assert(CODE.contains("\n"))
+            assert(CODE.hasSuffix("\n"))
+            return "(function()\n\(CODE)end)()"
+        }
+    }
+
     private func liftParameters(_ parameters: Parameters, as variables: [String]) -> String {
         assert(parameters.count == variables.count)
         var paramList = [String]()

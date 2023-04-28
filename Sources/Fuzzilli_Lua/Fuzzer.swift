@@ -18,6 +18,9 @@ public class Fuzzer {
     /// The evaluator to score generated programs.
     public let evaluator: ProgramEvaluator
 
+    /// The mutators used by the engine.
+    public let mutators: WeightedList<Mutator>
+
     /// The model of the target environment.
     public let environment: Environment
 
@@ -132,6 +135,7 @@ public class Fuzzer {
     public init(configuration: Configuration, 
                 evaluator: ProgramEvaluator, 
                 engine: FuzzEngine,
+                mutators: WeightedList<Mutator>,
                 environment: Environment,
                 lifter: Lifter,
                 corpus: Corpus,
@@ -142,6 +146,7 @@ public class Fuzzer {
         self.id = uniqueId
         self.events = Events()
         self.evaluator = evaluator
+        self.mutators = mutators
         self.environment = environment
         self.engine = engine
         self.lifter = lifter

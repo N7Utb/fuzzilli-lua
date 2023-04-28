@@ -28,6 +28,152 @@ final class LoadBoolean: Operation {
         super.init(numOutputs: 1, attributes: [.isPure, .isMutable])
     }
 }
+
+final class LoadBuiltin: Operation {
+    override var opcode: Opcode { .loadBuiltin(self) }
+
+    let builtinName: String
+
+    init(builtinName: String) {
+        self.builtinName = builtinName
+        super.init(numOutputs: 1, attributes: [.isMutable])
+    }
+}
+
+final class GetProperty: Operation{
+    override var opcode: Opcode { .getProperty(self) }
+
+    let propertyName: String
+
+    init(propertyName: String) {
+        self.propertyName = propertyName
+        super.init(numInputs: 1, numOutputs: 1, attributes: [.isMutable])
+    }    
+}
+
+final class GetElement: Operation {
+    override var opcode: Opcode { .getElement(self) }
+
+    let index: Int64
+
+    init(index: Int64) {
+        self.index = index
+        super.init(numInputs: 1, numOutputs: 1, attributes: [.isMutable])
+    }
+}
+
+final class SetElement: Operation {
+    override var opcode: Opcode { .setElement(self) }
+
+    let index: Int64
+
+    init(index: Int64) {
+        self.index = index
+        super.init(numInputs: 2, attributes: [.isMutable])
+    }
+}
+
+final class UpdateElement: Operation {
+    override var opcode: Opcode { .updateElement(self) }
+
+    let index: Int64
+    let op: BinaryOperator
+
+    init(index: Int64, operator op: BinaryOperator) {
+        self.index = index
+        self.op = op
+        super.init(numInputs: 2, attributes: [.isMutable])
+    }
+}
+
+final class DeleteElement: Operation {
+    override var opcode: Opcode { .deleteElement(self) }
+
+    let index: Int64
+
+    init(index: Int64) {
+        self.index = index
+        super.init(numInputs: 1, attributes: [.isMutable])
+    }
+}
+
+
+final class SetProperty: Operation {
+    override var opcode: Opcode { .setProperty(self) }
+
+    let propertyName: String
+
+    init(propertyName: String) {
+        self.propertyName = propertyName
+        super.init(numInputs: 2, attributes: [.isMutable])
+    }
+}
+
+final class UpdateProperty: Operation {
+    override var opcode: Opcode { .updateProperty(self) }
+
+    let propertyName: String
+    let op: BinaryOperator
+
+    init(propertyName: String, operator op: BinaryOperator) {
+        self.propertyName = propertyName
+        self.op = op
+        super.init(numInputs: 2, attributes: [.isMutable])
+    }
+}
+
+final class DeleteProperty: Operation {
+    override var opcode: Opcode { .deleteProperty(self) }
+
+    let propertyName: String
+
+    init(propertyName: String) {
+        self.propertyName = propertyName
+        super.init(numInputs: 1, attributes: [.isMutable])
+    }
+}
+
+
+final class LoadPair: Operation {
+    override var opcode: Opcode { .loadPair(self) }
+    init() {
+        super.init(numInputs: 1, numOutputs: 1, attributes: [.isMutable])
+    }
+}
+
+
+final class CallMethod: Operation {
+    override var opcode: Opcode { .callMethod(self) }
+
+    let methodName: String
+
+    var numArguments: Int {
+        return numInputs - 1
+    }
+
+    var numReturns: Int{
+        return numOutputs
+    }
+    init(methodName: String, numArguments: Int, numReturns: Int) {
+        self.methodName = methodName
+        // reference object is the first input
+        super.init(numInputs: numArguments + 1, numOutputs: numReturns, firstVariadicInput: 1, attributes: [.isMutable, .isVariadic, .isCall])
+    }
+}
+
+final class CreateArray: Operation {
+    override var opcode: Opcode { .createArray(self) }
+
+    var numInitialValues: Int {
+        return numInputs
+    }
+
+    init(numInitialValues: Int) {
+        super.init(numInputs: numInitialValues, numOutputs: 1, firstVariadicInput: 0, attributes: [.isVariadic])
+    }
+}
+
+
 // The parameters of a FuzzIL subroutine.
 public struct Parameters {
     /// The total number of parameters.
@@ -115,6 +261,16 @@ public enum BinaryOperator: String, CaseIterable {
     var token: String {
         return self.rawValue
     }
+    static func chooseOperation(lhs: LuaType, rhs: LuaType) -> BinaryOperator{
+        switch (lhs, rhs) {
+        case (.number, .number):
+            return chooseUniform(from: BinaryOperator.numop + BinaryOperator.allop)
+        case (.string, .string):
+            return chooseUniform(from: BinaryOperator.strop + BinaryOperator.allop)
+        default:
+            return chooseUniform(from: BinaryOperator.allop)
+        }
+    }
 }
 
 final class BinaryOperation: Operation {
@@ -155,6 +311,27 @@ final class Compare: Operation {
     }
 }
 
+/// Reassigns an existing variable, essentially doing `input1 = input2;`
+final class Reassign: Operation {
+    override var opcode: Opcode { .reassign(self) }
+
+    init() {
+        super.init(numInputs: 2)
+    }
+}
+
+/// Updates a variable by applying a binary operation to it and another variable.
+final class Update: Operation {
+    override var opcode: Opcode { .update(self) }
+
+    let op: BinaryOperator
+
+    init(_ op: BinaryOperator) {
+        self.op = op
+        super.init(numInputs: 2)
+    }
+}
+
 
 final class Return: Operation{
     override var opcode: Opcode { .return(self) }
@@ -176,7 +353,7 @@ final class LoadNil: Operation{
 
 final class CallFunction: Operation {
     override var opcode: Opcode{.callFunction(self)}
-    var numArgument: Int{
+    var numArguments: Int{
         return numInputs - 1
     }
     var numReturns: Int{
@@ -188,6 +365,212 @@ final class CallFunction: Operation {
     }
 }
 
+final class BeginIf: Operation{
+    override var opcode: Opcode { .beginIf(self) }
+
+    // If true, the condition for this if block will be negated.
+    let inverted: Bool
+
+    init(inverted: Bool) {
+        self.inverted = inverted
+        super.init(numInputs: 1, attributes: [.isBlockStart, .isMutable, .propagatesSurroundingContext], contextOpened: .script)
+    }
+}
+
+final class BeginElse: Operation {
+    override var opcode: Opcode { .beginElse(self) }
+
+    init() {
+        super.init(attributes: [.isBlockEnd, .isBlockStart, .propagatesSurroundingContext], contextOpened: .script)
+    }
+}
+
+final class EndIf: Operation {
+    override var opcode: Opcode { .endIf(self) }
+
+    init() {
+        super.init(attributes: .isBlockEnd)
+    }
+}
+
+///
+/// Loops.
+///
+/// Loops in FuzzIL generally have the following format:
+///
+///     BeginLoopHeader
+///        v7 <- Compare v1, v2, '<'
+///     BeginLoopBody <- v7
+///        ...
+///     EndLoop
+///
+/// Which would be lifted to something like
+///
+///     loop(v1 < v2) {
+///       // body
+///     }
+///
+/// As such, it is possible to perform arbitrary computations in the loop header, as it is in JavaScript.
+/// JavaScript only allows a single expression inside a loop header. However, this is purely a syntactical
+/// restriction, and can be overcome for example by declaring and invoking an arrow function in the
+/// header if necessary:
+///
+///     BeginLoopHeader
+///         foo
+///     BeginLoopBody
+///         ...
+///     EndLoopBody
+///
+/// Can be lifted to
+///
+///     loop((() => { foo })()) {
+///         // body
+///     }
+///
+/// For simpler cases that only involve expressions, the header can also be lifted to
+///
+///     loop(foo(), bar(), baz()) {
+///         // body
+///     }
+///
+
+final class BeginWhileLoopHeader: Operation {
+    override var opcode: Opcode { .beginWhileLoopHeader(self) }
+
+    init() {
+        super.init(attributes: [.isBlockStart, .propagatesSurroundingContext], contextOpened: .script)
+    }
+}
+
+// The input is the loop condition. This also prevents empty loop headers which are forbidden by the language.
+final class BeginWhileLoopBody: Operation {
+    override var opcode: Opcode { .beginWhileLoopBody(self) }
+
+    init() {
+        super.init(numInputs: 1, attributes: [.isBlockStart, .isBlockEnd, .propagatesSurroundingContext], contextOpened: [.script, .loop])
+    }
+}
+
+final class EndWhileLoop: Operation {
+    override var opcode: Opcode { .endWhileLoop(self) }
+
+    init() {
+        super.init(attributes: .isBlockEnd)
+    }
+}
+///
+/// For loops.
+///
+/// For loops have the following shape:
+///
+///     BeginForLoopInitializer
+///         // ...
+///         // v0 = initial value of the (single) loop variable
+///     BeginForLoopCondition v0 -> v1
+///         // v1 = current value of the (single) loop variable
+///         // ...
+///     BeginForLoopAfterthought -> v2
+///         // v2 = current value of the (single) loop variable
+///         // ...
+///     BeginForLoopBody -> v3
+///         // v3 = current value of the (single) loop variable
+///         // ...
+///     EndForLoop
+///
+/// This would be lifted to:
+///
+///     for (let vX = init; cond; afterthought) {
+///         body
+///     }
+///
+/// This format allows arbitrary computations to be performed in every part of the loop header. It also
+/// allows zero, one, or multiple loop variables to be declared, which correspond to the inner outputs
+/// of the blocks. During lifting, all the inner outputs are expected to lift to the same identifier (vX in
+/// the example above).
+/// Similar to while- and do-while loops, the code in the header blocks may be lifted to arrow functions
+/// if it requires more than one expression.
+///
+final class BeginForLoopInitializer: Operation {
+    override var opcode: Opcode { .beginForLoopInitializer(self) }
+
+    init() {
+        super.init(attributes: [.isBlockStart, .propagatesSurroundingContext], contextOpened: .script)
+    }
+}
+
+final class BeginForLoopCondition: Operation {
+    override var opcode: Opcode { .beginForLoopCondition(self) }
+
+    init() {
+        super.init(numInputs: 1, numInnerOutputs: 1, attributes: [.isBlockStart, .isBlockEnd, .propagatesSurroundingContext], contextOpened: .script)
+    }
+}
+
+final class BeginForLoopAfterthought: Operation {
+    override var opcode: Opcode { .beginForLoopAfterthought(self) }
+
+    init() {
+        super.init(numInputs: 1, numInnerOutputs: 1, attributes: [.isBlockStart, .isBlockEnd, .propagatesSurroundingContext], contextOpened: .script)
+    }
+}
+
+final class BeginForLoopBody: Operation {
+    override var opcode: Opcode { .beginForLoopBody(self) }
+
+    init(numInputs: Int) {
+        super.init(numInputs: numInputs, numInnerOutputs: 1, attributes: [.isBlockStart, .isBlockEnd, .propagatesSurroundingContext], contextOpened: [.script, .loop])
+    }
+}
+
+final class EndForLoop: Operation {
+    override var opcode: Opcode { .endForLoop(self) }
+
+    init() {
+        super.init(attributes: .isBlockEnd)
+    }
+}
+
+final class BeginForInLoop: Operation {
+    override var opcode: Opcode { .beginForInLoop(self) }
+
+    init(numInnerOutputs: Int) {
+        super.init(numInputs: 1, numInnerOutputs: numInnerOutputs, attributes: [.isBlockStart, .propagatesSurroundingContext], contextOpened: [.script, .loop])
+    }
+}
+
+final class EndForInLoop: Operation {
+    override var opcode: Opcode { .endForInLoop(self) }
+
+    init() {
+        super.init(attributes: .isBlockEnd)
+    }
+}
+
+final class LoopBreak: Operation {
+    override var opcode: Opcode { .loopBreak(self) }
+
+    init() {
+        super.init(attributes: [.isJump], requiredContext: [.script, .loop])
+    }
+}
+
+final class Label: Operation{
+    override var opcode: Opcode { .label(self) }
+    let value: String
+    init(_ name: String) {
+        value = name
+        super.init( requiredContext: [.script])
+    }
+}
+
+final class Goto: Operation{
+    override var opcode: Opcode { .goto(self) }
+    let value: String
+    init(_ name: String) {
+        value = name
+        super.init(attributes: [.isJump], requiredContext: [.script])
+    }
+}
 /// Internal operations.
 ///
 /// These can be used for internal fuzzer operations but will not appear in the corpus.

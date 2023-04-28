@@ -74,6 +74,9 @@ public class ProgramBuilder {
     /// Counter to quickly determine the next free variable.
     private var numVariables = 0
 
+    /// Counter to quickly determine the next free label names.
+    private var numLabels = 0
+
     /// Visible variables management.
     /// The `scopes` stack contains one entry per currently open scope containing all local variables created in that scope.
     private var scopes = Stack<[Variable]>([[]])
@@ -155,6 +158,14 @@ public class ProgramBuilder {
             comments.add(commentGenerator(), at: .instruction(code.count))
         }
     }
+    
+    /// Add a trace comment at the start of the currently generated program.
+    /// This is only done if history inspection is enabled.
+    public func traceHeader(_ commentGenerator: @autoclosure () -> String) {
+        if fuzzer.config.enableInspection {
+            comments.add(commentGenerator(), at: .header)
+        }
+    }
 
     /// Returns a random floating point value.
     public func randomFloat() -> Double {
@@ -198,6 +209,69 @@ public class ProgramBuilder {
         })
     }
 
+    /// Returns the name of a random builtin.
+    public func randomBuiltin() -> String {
+        return chooseUniform(from: fuzzer.environment.builtins)
+    }   
+
+    /// Returns a random builtin property name.
+    ///
+    /// This will return a random name from the environment's list of builtin property names,
+    /// i.e. a property that exists on (at least) one builtin object type.
+    func randomBuiltinPropertyName() -> String {
+        return chooseUniform(from: fuzzer.environment.builtinProperties)
+    }
+
+    /// Returns a random custom property name.
+    ///
+    /// This will select a random property from a (usually relatively small) set of custom property names defined by the environment.
+    ///
+    /// This should generally be used in one of two situations:
+    ///   1. If a new property is added to an object.
+    ///     In that case, we prefer to add properties with custom names (e.g. ".a", ".b") instead of properties
+    ///     with names that exist in the environment (e.g. ".length", ".prototype"). This way, in the resulting code
+    ///     it will be fairly clear when a builtin property is accessed vs. a custom one. It also increases the chances
+    ///     of selecting an existing property when choosing a random property to access, see the next point.
+    ///   2. If we have no static type information about the object we're accessing.
+    ///     In that case there is a higher chance of success when using the small set of custom property names
+    ///     instead of the much larger set of all property names that exist in the environment (or something else).
+    public func randomCustomPropertyName() -> String {
+        return chooseUniform(from: fuzzer.environment.customProperties)
+    }
+
+    /// Returns either a builtin or a custom property name, with equal probability.
+    public func randomPropertyName() -> String {
+        return probability(0.5) ? randomBuiltinPropertyName() : randomCustomPropertyName()
+    }
+
+    /// Returns a random builtin method name.
+    ///
+    /// This will return a random name from the environment's list of builtin method names,
+    /// i.e. a method that exists on (at least) one builtin object type.
+    public func randomBuiltinMethodName() -> String {
+        return chooseUniform(from: fuzzer.environment.builtinMethods)
+    }
+
+
+    /// Returns a random custom method name.
+    ///
+    /// This will select a random method from a (usually relatively small) set of custom method names defined by the environment.
+    ///
+    /// See the comment for randomCustomPropertyName() for when this should be used.
+    public func randomCustomMethodName() -> String {
+        return chooseUniform(from: fuzzer.environment.customMethods)
+    }
+    
+    /// Returns either a builtin or a custom method name, with equal probability.
+    public func randomMethodName() -> String {
+        return probability(0.5) ? randomBuiltinMethodName() : randomCustomMethodName()
+    }
+
+    /// Returns a random visible label
+    public func randomLabel() -> String? {
+        return !label_stack.top.isEmpty ? chooseUniform(from: label_stack.top) : nil
+    }
+    
     // Settings and constants controlling the behavior of randomParameters() below.
     // This determines how many variables of a given type need to be visible before
     // that type is considered a candidate for a parameter type. For example, if this
@@ -408,8 +482,6 @@ public class ProgramBuilder {
         return randomArguments(forCallingFunctionOfSignature: signature)
     }
 
-
-
     /// Find random variables to use as arguments for calling a function with the specified signature.
     ///
     /// See the comment above `randomArguments(forCalling function: Variable)` for caveats.
@@ -420,6 +492,34 @@ public class ProgramBuilder {
         return arguments
     }
 
+    /// Find random variables to use as arguments for calling the specified method.
+    ///
+    /// See the comment above `randomArguments(forCalling function: Variable)` for caveats.
+    public func randomArguments(forCallingMethod methodName: String, on object: Variable) -> [Variable] {
+        let signature = methodSignature(of: methodName, on: object)
+        return randomArguments(forCallingFunctionOfSignature: signature)
+    }
+
+    /// Find random variables to use as arguments for calling the specified method.
+    ///
+    /// See the comment above `randomArguments(forCalling function: Variable)` for caveats.
+    public func randomArguments(forCallingMethod methodName: String, on objType: LuaType) -> [Variable] {
+        let signature = methodSignature(of: methodName, on: objType)
+        return randomArguments(forCallingFunctionOfSignature: signature)
+    }
+
+    /// Find the function rnum of rets
+    public func getFunctionNumReturns(forCalling function: Variable) -> Int{
+        let signature = type(of: function).signature ?? Signature.forUnknownFunction
+        return signature.rets.count
+    }
+
+    /// Find the function rnum of rets
+    public func getMethodNumReturns(of methodName: String, on object: Variable) -> Int{
+        // let signature = type(of: function).signature ?? Signature.forUnknownFunction
+        let signature = typeanaylzer.inferMethodSignature(of: methodName, on: object)
+        return signature.rets.count
+    }
     /// Hide the specified variable, preventing it from being used as input by subsequent code.
     ///
     /// Hiding a variable prevents it from being returned from `randomVariable()` and related functions, which
@@ -478,7 +578,19 @@ public class ProgramBuilder {
     public func type(of v: Variable) -> LuaType {
         return typeanaylzer.type(of: v)
     }
-    
+
+    public func type(ofProperty property: String, on v: Variable) -> LuaType {
+        return typeanaylzer.inferPropertyType(of: property, on: v)
+    }
+
+    public func methodSignature(of methodName: String, on object: Variable) -> Signature {
+        return typeanaylzer.inferMethodSignature(of: methodName, on: object)
+    }
+
+    public func methodSignature(of methodName: String, on objType: LuaType) -> Signature {
+        return typeanaylzer.inferMethodSignature(of: methodName, on: objType)
+    }
+
     ///
     /// Adoption of variables from a different program.
     /// Required when copying instructions between program.
@@ -977,7 +1089,7 @@ public class ProgramBuilder {
             availableGenerators = fuzzer.codeGenerators.filter({ $0.requiredContext.isSubset(of: origContext) })
             assert(!availableGenerators.isEmpty)
         }
-
+        
         while remainingBudget > 0 {
             assert(context == origContext, "Code generation or splicing must not change the current context")
 
@@ -996,7 +1108,7 @@ public class ProgramBuilder {
             }
 
             let codeSizeBefore = code.count
-
+            
             switch mode {
             case .generating:
                 assert(hasVisibleVariables)
@@ -1017,7 +1129,6 @@ public class ProgramBuilder {
                 fatalError("Unknown ProgramBuildingMode \(mode)")
             }
             let codeSizeAfter = code.count
-
             let emittedInstructions = codeSizeAfter - codeSizeBefore
             remainingBudget -= emittedInstructions
             if emittedInstructions > 0 {
@@ -1033,7 +1144,11 @@ public class ProgramBuilder {
         }
     }
 
-
+    /// Returns the next free label names
+    public func nextLabel() -> String{
+        numLabels += 1;
+        return "l\(numLabels - 1)"
+    }
 
     /// Returns the next free variable.
     func nextVariable(_ isLocal:Bool = false) -> Variable {
@@ -1095,7 +1210,7 @@ public class ProgramBuilder {
 
     /// Runs a code generator in the current context and returns the number of generated instructions.
     @discardableResult
-    private func run(_ generator: CodeGenerator) -> Int {
+    public func run(_ generator: CodeGenerator) -> Int {
         assert(generator.requiredContext.isSubset(of: context))
 
         var inputs: [Variable] = []
@@ -1120,8 +1235,7 @@ public class ProgramBuilder {
         // Basic integrity checking
         assert(!instr.inouts.contains(where: { $0.number >= numVariables }))
         // Context Checking
-        /// TODO: Context
-        // assert(instr.op.requiredContext.isSubset(of: contextAnalyzer.context))
+        assert(instr.op.requiredContext.isSubset(of: contextAnalyzer.context))
 
         // The returned instruction will also contain its index in the program. Use that so the analyzers have access to the index.
         let instr = code.append(instr)
@@ -1141,13 +1255,14 @@ public class ProgramBuilder {
     private func analyze(_ instr: Instruction) {
         assert(code.lastInstruction.op === instr.op)
         updateVariableAnalysis(instr)
-        // contextAnalyzer.analyze(instr)
+        contextAnalyzer.analyze(instr)
         // updateObjectAndClassLiteralState(instr)
         typeanaylzer.analyze(instr)
     }
 
     private var globalvariable_map = VariableMap<[Variable]>()
     private var function_stack = Stack<Variable>()
+    private var label_stack = Stack<[String]>([[]])
     private func updateVariableAnalysis(_ instr: Instruction) {
 
         // Scope management (1).
@@ -1160,6 +1275,8 @@ public class ProgramBuilder {
                 unhide(v)
             }
             variablesInScope.removeLast(current.count)
+
+            label_stack.pop()
         }
         scopes.top.append(contentsOf: instr.outputs)
         variablesInScope.append(contentsOf: instr.outputs)
@@ -1176,7 +1293,8 @@ public class ProgramBuilder {
                 globalvariable_map[instr.output] = []
             case .endFunction:
                 let _ = function_stack.pop()
-
+            case .label(let op):
+                label_stack.top.append(op.value)
             default:
                 break
             
@@ -1184,6 +1302,7 @@ public class ProgramBuilder {
         // Scope management (2). Happens here since e.g. function definitions create a variable in the outer scope.
         if instr.isBlockStart {
             scopes.push([])
+            label_stack.push([])
         }
 
         scopes.top.append(contentsOf: instr.innerOutputs)
@@ -1206,7 +1325,6 @@ public class ProgramBuilder {
         for _ in 0..<op.numInnerOutputs {
             inouts.append(nextVariable())
         }
-
         return internalAppend(Instruction(op, inouts: inouts))
     }
 
@@ -1315,6 +1433,14 @@ public class ProgramBuilder {
         return emit(BinaryOperation(op), withInputs: [lhs, rhs]).output
     }
 
+    public func reassign(_ output: Variable, to input: Variable, with op: BinaryOperator) {
+        emit(Update(op), withInputs: [output, input])
+    }
+
+    public func reassign(_ output: Variable, to input: Variable) {
+        emit(Reassign(), withInputs: [output, input])
+    }
+
     @discardableResult
     public func compare(_ lhs: Variable, with rhs: Variable, using comparator: Comparator) -> Variable {
         return emit(Compare(comparator), withInputs: [lhs, rhs]).output
@@ -1325,4 +1451,114 @@ public class ProgramBuilder {
         return Array(emit(CallFunction(numArguments: arguments.count, numReturns: numReturns), withInputs: [function] + arguments).outputs)
     }
 
+    @discardableResult
+    public func createArray(with initialValues: [Variable]) -> Variable {
+        return emit(CreateArray(numInitialValues: initialValues.count), withInputs: initialValues).output
+    }
+
+    @discardableResult
+    public func loadBuiltin(_ name: String) -> Variable {
+        return emit(LoadBuiltin(builtinName: name)).output
+    }
+
+    @discardableResult
+    public func getProperty(_ name: String, of object: Variable) -> Variable {
+        return emit(GetProperty(propertyName: name), withInputs: [object]).output
+    }
+
+    public func setProperty(_ name: String, of object: Variable, to value: Variable) {
+        emit(SetProperty(propertyName: name), withInputs: [object, value])
+    }
+
+    public func updateProperty(_ name: String, of object: Variable, with value: Variable, using op: BinaryOperator) {
+        emit(UpdateProperty(propertyName: name, operator: op), withInputs: [object, value])
+    }
+
+    public func deleteProperty(_ name: String, of object: Variable) {
+        emit(DeleteProperty(propertyName: name), withInputs: [object])
+    }
+
+    @discardableResult
+    public func getElement(_ index: Int64, of array: Variable) -> Variable {
+        return emit(GetElement(index: index), withInputs: [array]).output
+    }
+
+    public func setElement(_ index: Int64, of array: Variable, to value: Variable) {
+        emit(SetElement(index: index), withInputs: [array, value])
+    }
+
+    public func updateElement(_ index: Int64, of array: Variable, with value: Variable, using op: BinaryOperator) {
+        emit(UpdateElement(index: index, operator: op), withInputs: [array, value])
+    }
+
+    @discardableResult
+    public func deleteElement(_ index: Int64, of array: Variable) {
+        emit(DeleteElement(index: index), withInputs: [array])
+    }
+
+
+    @discardableResult
+    public func callMethod(_ name: String, on object: Variable, withArgs arguments: [Variable] = [], numReturns: Int = 0, guard isGuarded: Bool = false) -> [Variable] {
+        return Array(emit(CallMethod(methodName: name, numArguments: arguments.count, numReturns: numReturns), withInputs: [object] + arguments).outputs)
+    }
+
+    @discardableResult
+    public func buildPair(_ obj: Variable) -> Variable{
+        return emit(LoadPair(), withInputs: [obj]).output
+    }
+
+    public func buildIf(_ condition: Variable, ifBody: () -> Void) {
+        emit(BeginIf(inverted: false), withInputs: [condition])
+        ifBody()
+        emit(EndIf())
+    }
+
+    public func buildIfElse(_ condition: Variable, ifBody: () -> Void, elseBody: () -> Void) {
+        emit(BeginIf(inverted: false), withInputs: [condition])
+        ifBody()
+        emit(BeginElse())
+        elseBody()
+        emit(EndIf())
+    }
+    public func buildWhileLoop(_ header: () -> Variable, _ body: () -> Void) {
+        emit(BeginWhileLoopHeader())
+        let cond = header()
+        emit(BeginWhileLoopBody(), withInputs: [cond])
+        body()
+        emit(EndWhileLoop())
+    }
+
+    // Build a simple for loop that declares one loop variable.
+    public func buildForLoop(i initializer: () -> Variable, _ cond: () -> Variable, _ afterthought: (() -> Variable)? = nil, _ body: (Variable) -> ()) {
+        emit(BeginForLoopInitializer())
+        let initialValue = initializer()
+        var loopVar = emit(BeginForLoopCondition(), withInputs: [initialValue]).innerOutput
+        let cond = cond()
+        loopVar = emit(BeginForLoopAfterthought(), withInputs: [cond]).innerOutput
+        if let afterthought =  afterthought?() {
+            loopVar = emit(BeginForLoopBody(numInputs: 1), withInputs: [afterthought]).innerOutput
+        }
+        else{
+            loopVar = emit(BeginForLoopBody(numInputs: 0)).innerOutput
+        }
+        body(loopVar)
+        emit(EndForLoop())
+    }
+
+    public func buildForInLoop(_ obj: Variable, _ body: ([Variable]) -> ()) {
+        var n = 0;
+        if let signature = type(of: obj).functionSignature { n = signature.rets.count}
+        let i = emit(BeginForInLoop(numInnerOutputs: n), withInputs: [obj]).innerOutputs
+        body(Array(i))
+        emit(EndForInLoop())
+    }
+    public func loopBreak() {
+        emit(LoopBreak())
+    }
+    public func buildLabel(_ name: String){
+        emit(Label(name))
+    }
+    public func buildGoto(_ target: String){
+        emit(Goto(target))
+    }
 }

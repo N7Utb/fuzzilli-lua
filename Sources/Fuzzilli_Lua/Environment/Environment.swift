@@ -26,6 +26,20 @@ public protocol Environment: Component {
     /// List of all builtin objects in the target environment.
     var builtins: Set<String> { get }
 
+    /// Custom property names to use when defining new properties on objects.
+    /// These should not exist on builtin objects.
+    var customProperties: Set<String> { get }
+
+    /// List of properties that exist on at least one type of builtin objects.
+    var builtinProperties: Set<String> { get }
+
+    /// Custom method names to use when defining new methods on objects.
+    /// These should not exist on builtin objects.
+    var customMethods: Set<String> { get }
+
+    /// List of methods that exist on at least one builtin object.
+    var builtinMethods: Set<String> { get }
+
     /// The type representing integers in the target environment.
     var numberType: LuaType { get }
 
@@ -35,6 +49,16 @@ public protocol Environment: Component {
     /// The type representing strings in the target environment.
     var stringType: LuaType { get }
 
+    /// The type representing arrays in the target environment.
+    /// Used e.g. for arrays created through a literal.
+    var tableType: LuaType { get }
+
     /// Retuns the type of the builtin with the given name.
     func type(ofBuiltin builtinName: String) -> LuaType
+
+    /// Returns the type of the property on the provided base object.
+    func type(ofProperty propertyName: String, on baseType: LuaType) -> LuaType
+
+    /// Returns the signature of the specified method of he base object.
+    func signature(ofMethod methodName: String, on baseType: LuaType) -> Signature
 }

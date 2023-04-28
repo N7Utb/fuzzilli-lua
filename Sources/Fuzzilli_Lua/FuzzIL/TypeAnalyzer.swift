@@ -11,7 +11,10 @@ public struct TypeAnaylzer: Analyzer {
 
     // Tracks the active function definitions and contains the instruction that started the function.
     private var activeFunctionDefinitions = Stack<Instruction>()    
-    
+
+    // A stack for active for loops containing the types of the loop variables.
+    private var activeForLoopVariableTypes = Stack<[LuaType]>()
+
     // The index of the last instruction that was processed. Just used for debug assertions.
     private var indexOfLastInstruction = -1
 
@@ -33,7 +36,6 @@ public struct TypeAnaylzer: Analyzer {
     public mutating func analyze(_ instr: Instruction) {
         assert(instr.index == indexOfLastInstruction + 1)
         indexOfLastInstruction += 1
-        
         // Reset type changes array before instruction execution.
         typeChanges = []
         processTypeChangesBeforeScopeChanges(instr)
@@ -52,6 +54,26 @@ public struct TypeAnaylzer: Analyzer {
         assert(index == indexOfLastInstruction + 1)
         signatures[index] = parameterTypes
     }
+
+    public func inferMethodSignature(of methodName: String, on objType: LuaType) -> Signature {
+        return environment.signature(ofMethod: methodName, on: objType)
+    }
+
+    /// Attempts to infer the signature of the given method on the given object type.
+    public func inferMethodSignature(of methodName: String, on object: Variable) -> Signature {
+        return inferMethodSignature(of: methodName, on: state.type(of: object))
+    }
+   
+    /// Attempts to infer the type of the given property on the given object type.
+    public func inferPropertyType(of propertyName: String, on objType: LuaType) -> LuaType {
+        return environment.type(ofProperty: propertyName, on: objType)
+    }
+
+    /// Attempts to infer the type of the given property on the given object type.
+    public func inferPropertyType(of propertyName: String, on object: Variable) -> LuaType {
+        return inferPropertyType(of: propertyName, on: state.type(of: object))
+    }
+
 
     public mutating func setType(of v: Variable, to t: LuaType) {
         assert(t != .nothing)
@@ -112,7 +134,52 @@ public struct TypeAnaylzer: Analyzer {
                     setType(of: begin.output, to:funcType.settingSignature(to: signature.parameters => returnValueType))
                 }
             }
-
+        case .beginIf:
+            state.startGroupOfConditionallyExecutingBlocks()
+            state.enterConditionallyExecutingBlock(typeChanges: &typeChanges)
+        case .beginElse:
+            state.enterConditionallyExecutingBlock(typeChanges: &typeChanges)
+        case .endIf:
+            if !state.currentBlockHasAlternativeBlock {
+                // This If doesn't have an Else block, so append an empty block representing the state if the If-body is not executed.
+                state.enterConditionallyExecutingBlock(typeChanges: &typeChanges)
+            }
+            state.endGroupOfConditionallyExecutingBlocks(typeChanges: &typeChanges)  
+        case .beginForLoopInitializer,
+             .beginForLoopCondition:
+            // The initializer and the condition of a for-loop's header execute unconditionally.
+            break
+        case .beginForLoopAfterthought:
+            // A for-loop's afterthought and body block execute conditionally.
+            state.startGroupOfConditionallyExecutingBlocks()
+            // We add an empty block to represent the state when the body and afterthought are never executed.
+            state.enterConditionallyExecutingBlock(typeChanges: &typeChanges)
+            // Then we add a block to represent the state when they are executed.
+            state.enterConditionallyExecutingBlock(typeChanges: &typeChanges)
+        case .beginForLoopBody:
+            // We keep using the state for the loop afterthought here.
+            // TODO, technically we should execute the body before the afterthought block...
+            break
+        case .endForLoop:
+            state.endGroupOfConditionallyExecutingBlocks(typeChanges: &typeChanges)
+        case .beginWhileLoopHeader:
+            // Loop headers execute unconditionally (at least once).
+            break
+        case .beginWhileLoopBody,
+             .beginForInLoop:
+            //  .beginForOfLoopWithDestruct,
+            //  .beginRepeatLoop:
+            //  .beginCodeString:
+            state.startGroupOfConditionallyExecutingBlocks()
+            // Push an empty state representing the case when the loop body (or code string) is not executed at all
+            state.enterConditionallyExecutingBlock(typeChanges: &typeChanges)
+            // Push a new state tracking the types inside the loop
+            state.enterConditionallyExecutingBlock(typeChanges: &typeChanges)
+        case .endWhileLoop,
+             .endForInLoop:
+            //  .endRepeatLoop:
+            //  .endCodeString:
+            state.endGroupOfConditionallyExecutingBlocks(typeChanges: &typeChanges)
         default:
             assert(instr.isSimple)
 
@@ -135,6 +202,29 @@ public struct TypeAnaylzer: Analyzer {
 
         // Helper function to set output type of binary/reassignment operations
         func analyzeBinaryOperation(operator op: BinaryOperator, withInputs inputs: ArraySlice<Variable>) -> LuaType {
+            // switch op {
+            // case .Add,
+            //      .Sub,
+            //      .Mul,
+            //      .Exp,
+            //      .Div,
+            //      .Mod,
+            //      .Divisible:
+            //     return .number
+            // case .LogicAnd:
+            //     if state.type(of: inputs[0]) == .boolean || state.type(of: inputs[1]) == .boolean {return .boolean}
+            //     else {return state.type(of: inputs[1])}
+            // case .LogicOr:
+            //     if state.type(of: inputs[0]) == .boolean || state.type(of: inputs[1]) == .boolean {return .boolean}
+            //     else {return state.type(of: inputs[0])}            
+            // case .Concat:
+            //     return environment.stringType
+            // }
+            analyzeBinaryOperation(operator: op, withInputs: inputs.map({state.type(of: $0)}))
+        }
+
+        // Helper function to set output type of binary/reassignment operations
+        func analyzeBinaryOperation(operator op: BinaryOperator, withInputs inputsType: [LuaType]) -> LuaType {
             switch op {
             case .Add,
                  .Sub,
@@ -145,13 +235,13 @@ public struct TypeAnaylzer: Analyzer {
                  .Divisible:
                 return .number
             case .LogicAnd:
-                if state.type(of: inputs[0]) == .boolean || state.type(of: inputs[1]) == .boolean {return .boolean}
-                else {return state.type(of: inputs[1])}
+                if inputsType[0] == .boolean ||  inputsType[1] == .boolean {return .boolean}
+                else {return  inputsType[1]}
             case .LogicOr:
-                if state.type(of: inputs[0]) == .boolean || state.type(of: inputs[1]) == .boolean {return .boolean}
-                else {return state.type(of: inputs[0])}            
+                if  inputsType[0] == .boolean ||  inputsType[1] == .boolean {return .boolean}
+                else {return  inputsType[0]}            
             case .Concat:
-                return .string
+                return environment.stringType
             }
         }
         // Helper function for operations whose results
@@ -171,18 +261,23 @@ public struct TypeAnaylzer: Analyzer {
             return allInputsAreBigint ? .number : outputType
         }
         switch instr.op.opcode {
+        case .loadBuiltin(let op):
+            set(instr.output, environment.type(ofBuiltin: op.builtinName))
         case .loadNumber:
             set(instr.output, .number)      
 
         case .loadString:
-            set(instr.output, .string)
+            set(instr.output, environment.stringType)
 
         case .loadBoolean:
             set(instr.output, .boolean)
 
         case .loadNil:
             set(instr.output, .undefined)
-
+        case .loadPair:
+            set(instr.output, .iterable + .function([] => [.number, .plain(type(ofInput: 0))]))
+        case .reassign:
+            set(instr.input(0), type(ofInput: 1))
         case .unaryOperation(let op):
             switch op.op{
                 case .Minus,
@@ -194,7 +289,8 @@ public struct TypeAnaylzer: Analyzer {
 
         case .binaryOperation(let op):
             set(instr.output,analyzeBinaryOperation(operator: op.op, withInputs: instr.inputs))
-
+        case .update(let op):
+            set(instr.input(0), analyzeBinaryOperation(operator: op.op, withInputs: instr.inputs))
         case .compare:
             set(instr.output, .boolean)
 
@@ -223,6 +319,64 @@ public struct TypeAnaylzer: Analyzer {
                     set(v, .undefined)
                 }
             }
+        case .callMethod(let op):
+            let output_type = computeParameterTypes(from:inferMethodSignature(of: op.methodName, on: instr.input(0)).rets)
+            let n = output_type.count
+            for (idx, v) in instr.outputs.enumerated(){
+                if idx < n{
+                    set(v, output_type[idx])
+                }
+                else{
+                    set(v, .undefined)
+                }
+            }
+        case .beginForLoopCondition:
+            // For now, we use only the initial type of the loop variables (at the point of the for-loop's initializer block)
+            // without tracking any type changes in the other parts of the for loop.
+            let inputTypes = instr.inputs.map({ state.type(of: $0) })
+            activeForLoopVariableTypes.push(inputTypes)
+            assert(inputTypes.count == instr.numInnerOutputs)
+            zip(instr.innerOutputs, inputTypes).forEach({ set($0, $1) })
+
+        case .beginForLoopAfterthought:
+            let inputTypes = activeForLoopVariableTypes.top
+            assert(inputTypes.count == instr.numInnerOutputs)
+            zip(instr.innerOutputs, inputTypes).forEach({ set($0, $1) })
+
+        case .beginForLoopBody:
+            let inputTypes = activeForLoopVariableTypes.pop()
+            assert(inputTypes.count == instr.numInnerOutputs)
+            zip(instr.innerOutputs, inputTypes).forEach({ set($0, $1) })
+        case .beginForInLoop:
+            // set(instr.innerOutput, environment.stringType)
+            let output_type = computeParameterTypes(from: inferCallResultType(of: instr.input(0)))
+            let n = output_type.count
+            for (idx, v) in instr.innerOutputs.enumerated(){
+                if idx < n{
+                    set(v, output_type[idx])
+                }
+                else{
+                    set(v, .undefined)
+                }
+            }
+        case .createArray:
+            set(instr.output,LuaType.table(ofGroup: "table", withArrayType: [.undefined] + instr.inputs.map({state.type(of: $0)})))
+
+        case .getProperty(let op):
+            set(instr.output, inferPropertyType(of: op.propertyName, on: instr.input(0)))
+
+        case .setProperty(let op):
+            set(instr.input(0), type(ofInput: 0).adding(property: op.propertyName, propertyType: type(ofInput: 1)))
+
+        case .updateProperty(let op):
+            set(instr.input(0), type(ofInput: 0).adding(property: op.propertyName, propertyType: analyzeBinaryOperation(operator: op.op, withInputs: [inferPropertyType(of: op.propertyName, on: instr.input(0)), type(ofInput: 1)])))
+
+        case .deleteProperty(let op):
+            set(instr.input(0), type(ofInput: 0).removing(property: op.propertyName))
+
+        case .getElement(let op):
+            set(instr.output, type(ofInput: 0).arraytype[Int(op.index)])
+
         default:
             // Only simple instructions and block instruction with inner outputs are handled here
             assert(instr.numOutputs == 0 || (instr.isBlock && instr.numInnerOutputs == 0))
@@ -240,7 +394,7 @@ public struct TypeAnaylzer: Analyzer {
             case .rest:
                 // A rest parameter will just be an array. Currently, we don't support nested array types (i.e. .iterable(of: .integer)) or so, but once we do, we'd need to update this logic.
                 /// TODO: rest
-                types.append(.undefined)
+                types.append(environment.tableType)
             }
         }
         return types
@@ -338,10 +492,10 @@ public struct TypeAnaylzer: Analyzer {
             if parentState.types[v] == nil {
                 parentState.types[v] = oldType
             }
-
             // Integrity checking: if the type of v hasn't previously been updated in the active
             // state, then the old type must be equal to the type in the parent state.
-            assert(activeState.types[v] != nil || parentState.types[v] == oldType)
+            /// TODO: maybe improper
+            // assert(activeState.types[v] != nil || parentState.types[v] == oldType)
 
             activeState.types[v] = newType
             overallState.types[v] = newType
@@ -499,7 +653,6 @@ public struct TypeAnaylzer: Analyzer {
     private func computeVariableTypes(whenMerging states: [State]) -> VariableMap<LuaType> {
             var numUpdatesPerVariable = VariableMap<Int>()
             var newTypes = VariableMap<LuaType>()
-
             for state in states {
                 for (v, t) in state.types {
                     // Skip variable types that are already out of scope (local to a child of the child state)
@@ -509,7 +662,8 @@ public struct TypeAnaylzer: Analyzer {
                     assert(parentState.types[v] != nil)
 
                     // Skip variables that are local to the child state
-                    guard parentState.types[v] != .nothing else { continue }
+                    /// TODO: maybe improper
+                    // guard parentState.types[v] != .nothing else { continue }
 
                     if newTypes[v] == nil {
                         newTypes[v] = t
@@ -522,7 +676,8 @@ public struct TypeAnaylzer: Analyzer {
             }
 
             for (v, c) in numUpdatesPerVariable {
-                assert(parentState.types[v] != .nothing)
+                /// TODO: maybe improper
+                // assert(parentState.types[v] != .nothing)
 
                 // Not all paths updates this variable, so it must be unioned with the type in the parent state.
                 // The parent state will always have an entry for v due to the invariant "activeState[v] != nil => parentState[v] != nil".
@@ -530,7 +685,6 @@ public struct TypeAnaylzer: Analyzer {
                     newTypes[v]! |= parentState.types[v]!
                 }
             }
-
             return newTypes
         }
 
@@ -546,7 +700,6 @@ public struct TypeAnaylzer: Analyzer {
                 if overallState.types[v] != newType {
                     typeChanges.append((v, newType))
                 }
-
                 // overallState now doesn't contain the older type but actually a newer type,
                 // therefore we have to manually specify the old type here.
                 updateType(of: v, to: newType, from: oldParentState.types[v])

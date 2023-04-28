@@ -62,7 +62,8 @@ let package = Package(
                     "libcoverage"
                 ],
                 exclude: [
-                    "Protobuf/sync.proto"]
+                    "Protobuf/sync.proto",
+                    "Minimization/"]
                 ),
 
         .target(name: "REPRLRun",

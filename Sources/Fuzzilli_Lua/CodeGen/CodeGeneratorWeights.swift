@@ -17,16 +17,35 @@ public let codeGeneratorWeights = [
     // Value generators. These are used to bootstrap code
     // generation and therefore control the types of variables
     // available at the start of code generation.
-    "NumberGenerator":                         20,
-    "StringGenerator":                         20,
-    "BooleanGenerator":                        10,
-    "NilGenerator":                            5,
-    "TrivialFunctionGenerator":                10,
-    "FunctionGenerator":                       15,
-    "FunctionCallGenerator":                   15,
-    "SubroutineReturnGenerator":               3,
-    "UnaryOperationGenerator":                 10,
-    "BinaryOperationGenerator":                40,
-    "ComparisonGenerator":                     10
+    "NumberGenerator":                          20,
+    "StringGenerator":                          20,
+    "BooleanGenerator":                         10,
+    "NilGenerator":                             5,
+    "LabelGenerator":                           3,
+    "TrivialFunctionGenerator":                 10,
+    "FunctionGenerator":                        15,
+    "FunctionCallGenerator":                    15,
+    "SubroutineReturnGenerator":                3,
+    "UnaryOperationGenerator":                  10,
+    "BinaryOperationGenerator":                 40,
+    "ComparisonGenerator":                      10,
+    "IfElseGenerator":                          10,
+    "CompareWithIfElseGenerator":               15,
+    "WhileLoopGenerator":                       15,
+    "ReassignmentGenerator":                    20,
+    "UpdateGenerator":                          20,
+
+    "SimpleForLoopGenerator":                   10,
+    "ForInLoopGenerator":                       10,
+    "GotoGenerator":                            5,
+    "MethodCallGenerator":                      20,
+    "BuiltinGenerator":                         10,
+    "PairGenerator":                            10,
+    "PropertyRetrievalGenerator":               20,
+    "PropertyAssignmentGenerator":              20,
+    "PropertyUpdateGenerator":                  10,
+    "PropertyRemovalGenerator":                 5,
+    
+    "NumberComputationGenerator":               10,
 
 ]
