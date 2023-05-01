@@ -36,6 +36,18 @@ public class ProgramBuilder {
 
     private var typeanaylzer:TypeAnaylzer
 
+    /// Stack of active object literals.
+    ///
+    /// This needs to be a stack as object literals can be nested, for example if an object
+    /// literals is created inside a method/getter/setter of another object literals.
+    private var activeTableDefinitions = Stack<TableDefinition>()
+
+    /// When building object literals, the state for the current literal is exposed through this member and
+    /// can be used to add fields to the literal or to determine if some field already exists.
+    public var currentTableDefinition: TableDefinition {
+        return activeTableDefinitions.top
+    }
+
     /// If true, the variables containing a function is hidden inside the function's body.
     ///
     /// For example, in
@@ -129,8 +141,8 @@ public class ProgramBuilder {
         numberOfHiddenVariables = 0
         contextAnalyzer = ContextAnalyzer()
         typeanaylzer.reset()
-        // activeObjectLiterals.removeAll()
-        // activeClassDefinitions.removeAll()
+        activeTableDefinitions.removeAll()
+
     }
 
     /// Finalizes and returns the constructed program, then resets this builder so it can be reused for building another program.
@@ -164,6 +176,35 @@ public class ProgramBuilder {
     public func traceHeader(_ commentGenerator: @autoclosure () -> String) {
         if fuzzer.config.enableInspection {
             comments.add(commentGenerator(), at: .header)
+        }
+    }
+
+    /// Returns a random integer value suitable as size of for example an array.
+    /// The returned value is guaranteed to be positive.
+    public func randomSize(upTo maximum: Int64 = 0x100000000) -> Int64 {
+        assert(maximum >= 0x1000)
+        if probability(0.5) {
+            return chooseUniform(from: fuzzer.environment.interestingIntegers.filter({ $0 >= 0 && $0 <= maximum }))
+        } else {
+            return withEqualProbability({
+                Int64.random(in: 0...0x10)
+            }, {
+                Int64.random(in: 0...0x100)
+            }, {
+                Int64.random(in: 0...0x1000)
+            }, {
+                Int64.random(in: 0...maximum)
+            })
+        }
+    }
+
+    /// Returns a random integer value suitable as index.
+    public func randomIndex() -> Int64 {
+        // Prefer small, (usually) positive, indices.
+        if probability(0.33) {
+            return Int64.random(in: -2...10)
+        } else {
+            return randomSize()
         }
     }
 
@@ -1143,7 +1184,7 @@ public class ProgramBuilder {
             }
         }
     }
-
+    
     /// Returns the next free label names
     public func nextLabel() -> String{
         numLabels += 1;
@@ -1256,7 +1297,7 @@ public class ProgramBuilder {
         assert(code.lastInstruction.op === instr.op)
         updateVariableAnalysis(instr)
         contextAnalyzer.analyze(instr)
-        // updateObjectAndClassLiteralState(instr)
+        updateTableState(instr)
         typeanaylzer.analyze(instr)
     }
 
@@ -1307,6 +1348,26 @@ public class ProgramBuilder {
 
         scopes.top.append(contentsOf: instr.innerOutputs)
         variablesInScope.append(contentsOf: instr.innerOutputs)
+    }
+
+    private func updateTableState(_ instr: Instruction){
+        switch instr.op.opcode{
+        case .beginTable:
+            activeTableDefinitions.push(TableDefinition(in: self))
+        case .tableAddProperty(let op):
+            currentTableDefinition.properties.append(op.propertyName)
+        case .tableAddElement(let op):
+            currentTableDefinition.elements.append(op.index)
+        case .beginTableMethod(let op):
+            currentTableDefinition.methods.append(op.methodName)
+        case .endTableMethod:
+            break
+        case .endTable:
+            activeTableDefinitions.pop()
+        default:
+            assert(!instr.op.requiredContext.contains(.objectLiteral))
+            break
+        }
     }
     //
     // Low-level instruction constructors.
@@ -1561,4 +1622,41 @@ public class ProgramBuilder {
     public func buildGoto(_ target: String){
         emit(Goto(target))
     }
+    /// Represents a currently active class definition. Used to add fields to it and to query which fields already exist.
+    public class TableDefinition {
+        private let b: ProgramBuilder
+
+        public fileprivate(set) var properties: [String] = []
+        public fileprivate(set) var elements: [Int64] = []
+        public fileprivate(set) var methods: [String] = []
+
+        fileprivate init(in b: ProgramBuilder) {
+            assert(b.context.contains(.objectLiteral))
+            self.b = b
+        }
+        public func addTableProperty(_ name: String, value: Variable? = nil) {
+            let inputs = value != nil ? [value!] : []
+            b.emit(TableAddProperty(propertyName: name, hasValue: value != nil), withInputs: inputs)
+        }
+
+        public func addTableElement(_ index: Int64, value: Variable){
+            b.emit(TableAddElement(index: index), withInputs: [value])
+        }
+
+        public func addMethod(_ name: String, with descriptor: SubroutineDescriptor, _ body: ([Variable]) -> ()) {
+            b.setParameterTypesForNextSubroutine(descriptor.parameterTypes)
+            let instr = b.emit(BeginTableMethod(methodName: name, parameters: descriptor.parameters))
+            body(Array(instr.innerOutputs))
+            b.emit(EndTableMethod())
+        }
+    }
+
+
+    @discardableResult
+    public func buildTable(_ body: (TableDefinition) -> ()) -> Variable {
+        emit(BeginTable())
+        body(currentTableDefinition)
+        return emit(EndTable()).output
+    }
+
 }

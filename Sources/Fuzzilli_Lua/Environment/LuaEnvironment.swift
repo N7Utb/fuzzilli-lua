@@ -21,6 +21,8 @@ public extension LuaType{
     static let luaMathObject = table(ofGroup: "math", withProperties: ["pi", "maxinteger", "mininteger", "huge"], withMethods: ["abs", "acos", "asin", "atan2", "atan", "ceil", "cosh", "cos", "deg", "exp", "floor", "fmod", "frexp", "ldexp", "log10", "log", "max", "min", "modf", "pow", "rad", "random", "randomseed", "sinh", "sin", "sqrt", "tanh", "tan"])
 
     static let luaUtf8Object = table(ofGroup: "utf8", withProperties: ["charpattern"], withMethods: ["char", "codes", "codepoint", "len", "offset"])
+
+    static let luaTableObject = table(ofGroup: "table", withProperties: [], withMethods:["concat"])
 }
 
 public class LuaEnvironment: ComponentBase, Environment{
@@ -72,9 +74,13 @@ public class LuaEnvironment: ComponentBase, Environment{
 
         registerObjectGroup(.luaStringObject)
         registerObjectGroup(.luaMathObject)
+        registerObjectGroup(.luaUtf8Object)
+        registerObjectGroup(.luaTableObject)
 
         registerBuiltin("string", ofType: .luaStringObject)
         registerBuiltin("math", ofType: .luaMathObject)
+        registerBuiltin("utf8", ofType: .luaUtf8Object)
+        registerBuiltin("table", ofType: .luaTableObject)
     }
     override func initialize() {
         // Log detailed information about the environment here so users are aware of it and can modify things if they like.
@@ -244,5 +250,14 @@ public extension ObjectGroup {
             "offset"      : [.string, .number, .opt(.number)] => [.number],
             ]
         )
+    static let luaTableObject = ObjectGroup(
+        name: "table", 
+        instanceType: .luaTableObject, 
+        properties: [:], 
+        methods: [
+            "concat"      : [.table(), .opt(.string), .opt(.number) ,.opt(.number)] => [.string],
+            // "insert"      : [.table(), .opt(.number), .anything] => [],  /// this operation have the side effec on the .table
+
+        ])
 
 }

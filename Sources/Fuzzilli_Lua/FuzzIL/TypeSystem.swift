@@ -148,7 +148,7 @@ public struct LuaType: Hashable {
     }
 
     /// A table
-    public static func table(ofGroup group: String? = nil, withArrayType arraytype: [LuaType] = [], withProperties properties: [String] = [], withMethods methods: [String] = []) -> LuaType{
+    public static func table(ofGroup group: String? = nil, withArrayType arraytype: [Int: LuaType] = [:], withProperties properties: [String] = [], withMethods methods: [String] = []) -> LuaType{
         let ext = TypeExtension(group: group, arraytype: arraytype, properties: Set(properties), methods: Set(methods), signature: nil)
         return LuaType(definiteType: [.table], ext: ext)
     }
@@ -310,8 +310,8 @@ public struct LuaType: Hashable {
         return ext?.methods ?? Set()
     }
 
-    public var arraytype: [LuaType] {
-        return ext?.arraytype ?? []
+    public var arraytype: [Int: LuaType] {
+        return ext?.arraytype ?? [:]
     }
     
     public var additionalproperties: [String:LuaType]{
@@ -545,13 +545,29 @@ public struct LuaType: Hashable {
         newProperties.insert(property)
         var newadditionalPropertyies = additionalproperties
         newadditionalPropertyies[property] = propertyType
-        let newExt = TypeExtension(group: group, properties: newProperties, methods: methods, signature: signature,additionalproperties: newadditionalPropertyies, additionalmethods: additionalmethods)
+        let newExt = TypeExtension(group: group, arraytype: arraytype, properties: newProperties, methods: methods, signature: signature,additionalproperties: newadditionalPropertyies, additionalmethods: additionalmethods)
+        return LuaType(definiteType: definiteType, possibleType: possibleType, ext: newExt)
+    }
+
+    /// Returns a new type that represents this type with the added property.
+    public func adding(index: Int, elementType: LuaType) -> LuaType {
+        guard Is(.table()) else {
+            return self
+        }
+        var newarrayType = arraytype
+        newarrayType[index] = elementType
+        let newExt = TypeExtension(group: group, arraytype: newarrayType, properties: properties, methods: methods, signature: signature,additionalproperties: additionalproperties, additionalmethods: additionalmethods)
         return LuaType(definiteType: definiteType, possibleType: possibleType, ext: newExt)
     }
 
     /// Adds a property to this type.
     public mutating func add(property: String, propertyType: LuaType) {
         self = self.adding(property: property, propertyType: propertyType)
+    }
+
+    /// Adds a element to this type.
+    public mutating func add(index: Int, elementType: LuaType) {
+        self = self.adding(index: index, elementType: elementType)
     }
 
     /// Returns a new ObjectType that represents this type without the removed property.
@@ -561,26 +577,41 @@ public struct LuaType: Hashable {
         }
         var newProperties = properties
         newProperties.remove(property)
-        var newadditionalPropertyies = additionalproperties
-        newadditionalPropertyies.removeValue(forKey: property)
-        let newExt = TypeExtension(group: group, properties: newProperties, methods: methods, signature: signature,additionalproperties: newadditionalPropertyies, additionalmethods: additionalmethods)
+        var newadditionalProperties = additionalproperties
+        newadditionalProperties.removeValue(forKey: property)
+        let newExt = TypeExtension(group: group, arraytype: arraytype, properties: newProperties, methods: methods, signature: signature,additionalproperties: newadditionalProperties, additionalmethods: additionalmethods)
+        return LuaType(definiteType: definiteType, possibleType: possibleType, ext: newExt)
+    }
+
+    /// Returns a new ObjectType that represents this type without the removed property.
+    public func removing(index: Int) -> LuaType {
+        guard Is(.table()) else {
+            return self
+        }
+        var newarrayType = arraytype
+        newarrayType.removeValue(forKey: index)
+        let newExt = TypeExtension(group: group, arraytype: newarrayType, properties: properties, methods: methods, signature: signature,additionalproperties: additionalproperties, additionalmethods: additionalmethods)
         return LuaType(definiteType: definiteType, possibleType: possibleType, ext: newExt)
     }
 
     /// Returns a new ObjectType that represents this type with the added property.
-    public func adding(method: String) -> LuaType {
+    public func adding(method: String, signature: Signature) -> LuaType {
         guard Is(.table()) else {
             return self
         }
         var newMethods = methods
         newMethods.insert(method)
-        let newExt = TypeExtension(group: group, properties: properties, methods: newMethods, signature: signature)
+
+        var newadditionalMethods = additionalmethods
+        newadditionalMethods[method] = signature
+
+        let newExt = TypeExtension(group: group, arraytype: arraytype, properties: properties, methods: newMethods, signature: signature,additionalproperties: additionalproperties, additionalmethods: newadditionalMethods)
         return LuaType(definiteType: definiteType, possibleType: possibleType, ext: newExt)
     }
 
     /// Adds a method to this type.
-    public mutating func add(method: String) {
-        self = self.adding(method: method)
+    public mutating func add(method: String, signature: Signature) {
+        self = self.adding(method: method, signature: signature)
     }
 
     /// Returns a new ObjectType that represents this type without the removed property.
@@ -697,7 +728,7 @@ extension LuaType: CustomStringConvertible {
                 }
 
             }
-            
+
             if !properties.isEmpty {
                 if abbreviate && properties.count > 5 {
                     let selection = properties.prefix(3).map { "\"\($0)\"" }
@@ -787,7 +818,7 @@ class TypeExtension: Hashable {
     let properties: Set<String>
     let methods: Set<String>
 
-    let arraytype: [LuaType]
+    let arraytype: [Int: LuaType]
 
     let additionalproperties: [String: LuaType]
     let additionalmethods: [String: Signature]
@@ -799,7 +830,7 @@ class TypeExtension: Hashable {
     // The function signature. Will only be != nil if isFunction or isConstructor is true.
     let signature: Signature?
 
-    init?(group: String? = nil, arraytype: [LuaType] = [], properties: Set<String>, methods: Set<String>, signature: Signature?, additionalproperties: [String:LuaType] = [:],  additionalmethods: [String:Signature] = [:]) {
+    init?(group: String? = nil, arraytype: [Int: LuaType] = [:], properties: Set<String>, methods: Set<String>, signature: Signature?, additionalproperties: [String:LuaType] = [:],  additionalmethods: [String:Signature] = [:]) {
         if group == nil && properties.isEmpty && methods.isEmpty && signature == nil {
             return nil
         }

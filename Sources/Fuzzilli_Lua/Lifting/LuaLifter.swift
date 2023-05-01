@@ -141,7 +141,41 @@ public class LuaLifter: Lifter {
                 },{
                     w.assign(Literal.new("ipairs(\(input(0)))"), to: instr.output)
                 })
-                
+            
+            case .beginTable:
+                let end = program.code.findBlockEnd(head: instr.index) 
+                let output = program.code[end].output
+                let V = w.declare(output, as: "t\(output.number)")
+                w.emit("\(V) = {")
+                w.enterNewBlock()
+            case .tableAddProperty(let op):
+                let PROPERTY = op.propertyName
+                if op.hasValue{
+                    let VALUE = input(0)
+                    w.emit("\(PROPERTY) = \(VALUE),")
+                }
+                else{
+                    w.emit("\(PROPERTY),")
+                }
+
+            case .tableAddElement(let op):
+                let INDEX = op.index < 0 ? "[\(op.index)]" : String(op.index)
+                let VALUE = input(0)
+                w.emit("[\(INDEX)] = \(VALUE),")
+            case .endTable: 
+                w.leaveCurrentBlock()
+                w.emit("}")
+            case .beginTableMethod(let op):
+                // First inner output is explicit |this| parameter
+                let vars =  w.declareAll(instr.innerOutputs, usePrefix: "a")
+                let PARAMS = liftParameters(op.parameters, as: vars)
+                let METHOD = op.methodName
+                w.emit("\(METHOD) = function (\(PARAMS))")
+                w.enterNewBlock()
+            case .endTableMethod:
+                w.leaveCurrentBlock()
+                w.emit("end,")
+
             case .beginFunction:
                 liftFunctionDefinitionBegin(instr, keyword: "function", using: &w)
             case .endFunction:

@@ -67,6 +67,61 @@ public let CodeGenerators: [CodeGenerator] = [
             }
         }
     },
+
+    RecursiveCodeGenerator("TableGenerator") {b in 
+        b.buildTable(){ obj in
+            b.buildRecursive()
+        }
+    },
+
+    CodeGenerator("TablePropertyGenerator", inContext: .objectLiteral){ b in
+        assert(b.context.contains(.objectLiteral) && !b.context.contains(.script))
+
+        // Try to find a property that hasn't already been added to this literal.
+        var propertyName: String
+        var attempts = 0
+
+        repeat {
+            guard attempts < 10 else { return }
+            propertyName = b.randomCustomPropertyName()
+            attempts += 1
+        } while b.currentTableDefinition.properties.contains(propertyName)
+
+        b.currentTableDefinition.addTableProperty(propertyName, value: b.randomVariable())
+
+    },
+
+    CodeGenerator("TableElementGenerator", inContext: .objectLiteral, input: .anything){ b, v in
+        assert(b.context.contains(.objectLiteral) && !b.context.contains(.script))
+
+        // Select an element that hasn't already been added to this literal.
+        var index = b.randomIndex()
+        while b.currentTableDefinition.elements.contains(index) {
+            // We allow integer overflows here since we could get Int64.max as index, and its not clear what should happen instead in that case.
+            index &+= 1
+        }
+
+        b.currentTableDefinition.addTableElement(index, value: v)
+    },
+
+    RecursiveCodeGenerator("TableMethodGenerator", inContext: .objectLiteral){ b in
+        assert(b.context.contains(.objectLiteral) && !b.context.contains(.script))
+
+        // Try to find a method that hasn't already been added to this literal.
+        var methodName: String
+        var attempts = 0
+        repeat {
+            guard attempts < 10 else { return }
+            methodName = b.randomCustomMethodName()
+            attempts += 1
+        } while b.currentTableDefinition.methods.contains(methodName)
+
+        b.currentTableDefinition.addMethod(methodName, with: b.randomParameters()) { args in
+            b.buildRecursive()
+            b.doReturn(b.randomReturns())
+        }
+    
+    },
     RecursiveCodeGenerator("FunctionGenerator") { b in
         let f = b.buildFunction(with: b.randomParameters()) { _ in
             b.buildRecursive()
@@ -268,6 +323,29 @@ public let CodeGenerators: [CodeGenerator] = [
         let propertyName = b.type(of: obj).randomProperty() ?? b.randomCustomPropertyName()
         b.deleteProperty(propertyName, of: obj)
     },
+
+    CodeGenerator("ElementRetrievalGenerator", input: .table()) { b, obj in
+        let index = b.randomIndex()
+        b.getElement(index, of: obj)
+    },
+
+    CodeGenerator("ElementAssignmentGenerator", input: .table()) { b, obj in
+        let index = b.randomIndex()
+        let value = b.randomVariable()
+        b.setElement(index, of: obj, to: value)
+    },
+
+    CodeGenerator("ElementUpdateGenerator", input: .table()) { b, obj in
+        let index = b.randomIndex()
+        // TODO: for now we simply look for numbers, since those probably make the most sense for binary operations. But we may also want BigInts or strings sometimes.
+        let rhs = b.randomVariable(forUseAs: .number) ?? b.randomVariable()
+        b.updateElement(index, of: obj, with: rhs, using: BinaryOperator.chooseOperation(lhs: b.type(of: obj).arraytype[Int(index)] ?? .undefined, rhs: b.type(of: rhs)))
+    },
+
+    CodeGenerator("ElementRemovalGenerator", input: .table()) { b, obj in
+        let index = b.randomIndex()
+        b.deleteElement(index, of: obj)
+    }
 ]
 
 extension Array where Element == CodeGenerator {

@@ -77,6 +77,14 @@ public class OperationMutator: BaseInstructionMutator {
             newOp = UpdateProperty(propertyName: b.randomPropertyName(), operator: chooseUniform(from: BinaryOperator.allCases))
         case .deleteProperty(_):
             newOp = DeleteProperty(propertyName: b.randomPropertyName())
+        case .getElement(_):
+            newOp = GetElement(index: b.randomIndex())
+        case .setElement(_):
+            newOp = SetElement(index: b.randomIndex())
+        case .updateElement(_):
+            newOp = UpdateElement(index: b.randomIndex(), operator: chooseUniform(from: BinaryOperator.allCases))
+        case .deleteElement(_):
+            newOp = DeleteElement(index: b.randomIndex())
         default:
             fatalError("Unhandled Operation: \(type(of: instr.op))")
         }

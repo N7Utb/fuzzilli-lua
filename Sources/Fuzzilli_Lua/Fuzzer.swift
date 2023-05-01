@@ -162,6 +162,14 @@ public class Fuzzer {
 
     }
 
+    /// Set the CodeGenerators (and their respecitve weight) to use when generating new code.
+    public func setCodeGenerators(_ generators: WeightedList<CodeGenerator>) {
+        guard generators.contains(where: { $0.isValueGenerator }) else {
+            fatalError("Code generators must contain at least one value generator")
+        }
+        self.codeGenerators = generators
+    }
+
     /// Adds a module to this fuzzer. Can only be called before the fuzzer is initialized.
     public func addModule(_ module: Module) {
         assert(!isInitialized)

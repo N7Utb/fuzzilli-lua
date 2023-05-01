@@ -40,6 +40,72 @@ final class LoadBuiltin: Operation {
     }
 }
 
+final class BeginTable: Operation{
+    override var opcode: Opcode { .beginTable(self) }
+
+    init() {
+        super.init(attributes: .isBlockStart, contextOpened: .objectLiteral)
+    }
+}
+
+/// TODO: context class Definition
+final class EndTable: Operation {
+    override var opcode: Opcode { .endTable(self) }
+
+    init() {
+        super.init(numOutputs: 1, attributes: .isBlockEnd, requiredContext: .objectLiteral)
+    }
+}
+
+final class TableAddProperty: Operation {
+    override var opcode: Opcode { .tableAddProperty(self) }
+
+    let propertyName: String
+
+    var hasValue: Bool {
+        return numInputs == 1
+    }
+
+    init(propertyName: String, hasValue: Bool) {
+        self.propertyName = propertyName
+        super.init(numInputs: hasValue ? 1 : 0, attributes: .isMutable, requiredContext: .objectLiteral)
+    }
+}
+
+final class TableAddElement: Operation {
+    override var opcode: Opcode { .tableAddElement(self) }
+
+    let index: Int64
+
+    init(index: Int64) {
+        self.index = index
+        super.init(numInputs: 1, attributes: .isMutable, requiredContext: .objectLiteral)
+    }
+}
+
+// A method, for example `someMethod(a3, a4) {`
+final class BeginTableMethod: Operation {
+    override var opcode: Opcode { .beginTableMethod(self) }
+
+    let methodName: String
+    let parameters: Parameters
+
+    init(methodName: String, parameters: Parameters) {
+        self.methodName = methodName
+        self.parameters = parameters
+        // First inner output is the explicit |this| parameter
+        super.init(numInnerOutputs: parameters.count, attributes: [.isBlockStart, .isMutable], requiredContext: .objectLiteral, contextOpened: [.script, .subroutine, .method])
+    }
+}
+
+final class EndTableMethod: Operation {
+    override var opcode: Opcode { .endTableMethod(self) }
+
+    init() {
+        super.init(attributes: [.isBlockEnd])
+    }
+}
+
 final class GetProperty: Operation{
     override var opcode: Opcode { .getProperty(self) }
 

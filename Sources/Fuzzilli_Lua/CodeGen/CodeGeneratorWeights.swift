@@ -45,7 +45,16 @@ public let codeGeneratorWeights = [
     "PropertyAssignmentGenerator":              20,
     "PropertyUpdateGenerator":                  10,
     "PropertyRemovalGenerator":                 5,
-    
+    "ElementRetrievalGenerator":                20,
+    "ElementAssignmentGenerator":               20,
+    "ElementUpdateGenerator":                   7,
+    "ElementRemovalGenerator":                  5,
+
+    "TableGenerator":                           20, 
+    "TablePropertyGenerator":                   5,
+    "TableElementGenerator":                    5,
+    "TableMethodGenerator":                     5,
+
     "NumberComputationGenerator":               10,
 
 ]

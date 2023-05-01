@@ -98,7 +98,6 @@ func unitTest(with fuzzer: Fuzzer){
 
     // Initialize the fuzzer, and run startup tests
     fuzzer.initialize()
-
     let b = fuzzer.makeBuilder()
     
     // b.buildForLoop {
@@ -111,19 +110,18 @@ func unitTest(with fuzzer: Fuzzer){
     // b.buildLabel(b.nextLabel())
     // let v1 = b.loadNumber(123)
     let _ = b.loadString("abc")
-    let s = b.loadBuiltin("math")
+    b.test()
+    // let s = b.loadBuiltin("math")
     
-    
-    b.loadNumber(4)
-    let v1 = b.loadNumber(5)
-    let v2 = b.loadString("ccc")
+
+    // b.loadNumber(4)
+    // let v1 = b.loadNumber(5)
+    // let v2 = b.loadString("ccc")
+    // b.buildPrefix()
+    // b.run(CodeGenerators.get("TableGenerator"))
     // b.loadString("ddd")
-    let methodName = "gmatch"
-    let propertyName = "pi"
-    let a1 = b.createArray(with: [v1,v2])
-    print(b.type(of: a1))
-    let v3 = b.getElement(2, of: a1)
-    print(b.type(of: v3))
+    // let methodName = "gmatch"
+    // let propertyName = "pi"
     // b.buildPair(b.createArray(with: [b.loadNumber(1), b.loadNumber(2)]))
     // TODO: here and below, if we aren't finding arguments of compatible types, we probably still need a try-catch guard.
     // let arguments = b.randomArguments(forCallingMethod: methodName, on: s)
@@ -135,7 +133,7 @@ func unitTest(with fuzzer: Fuzzer){
     // }
     // print(b.type(of: s))
 
-    // b.run(CodeGenerators.get("PropertyRetrievalGenerator"))
+    
     // b.run(CodeGenerators.get("PropertyAssignmentGenerator"))
     // b.run(CodeGenerators.get("PropertyUpdateGenerator"))
     // b.run(CodeGenerators.get("PropertyRemovalGenerator"))

@@ -15,6 +15,10 @@ public struct TypeAnaylzer: Analyzer {
     // A stack for active for loops containing the types of the loop variables.
     private var activeForLoopVariableTypes = Stack<[LuaType]>()
 
+    // Stack of active object literals. Each entry contains the current type of the object created by the literal.
+    // This must be a stack as object literals can be nested (e.g. an object literal inside the method of another one).
+    private var activeTables = Stack<LuaType>()
+
     // The index of the last instruction that was processed. Just used for debug assertions.
     private var indexOfLastInstruction = -1
 
@@ -27,6 +31,7 @@ public struct TypeAnaylzer: Analyzer {
         state.reset()
         signatures.removeAll()
         assert(activeFunctionDefinitions.isEmpty)
+        assert(activeTables.isEmpty)
     }
     // Array for collecting type changes during instruction execution.
     // Not currently used, by could be used for example to validate the analysis by adding these as comments to programs.
@@ -99,7 +104,12 @@ public struct TypeAnaylzer: Analyzer {
     /// If parameter types have been added for this function, they are returned, otherwise generic parameter types (i.e. .anything parameters) for the parameters specified in the operation are generated.
     private func inferSubroutineParameterList(of op: BeginFunction, at index: Int) -> ParameterList {
         return signatures[index] ?? ParameterList(numParameters: op.parameters.count, hasRestParam: op.parameters.hasRestParameter)
+    }
 
+    /// Attempts to infer the parameter types of the given subroutine definition.
+    /// If parameter types have been added for this function, they are returned, otherwise generic parameter types (i.e. .anything parameters) for the parameters specified in the operation are generated.
+    private func inferSubroutineParameterList(of op: BeginTableMethod, at index: Int) -> ParameterList {
+        return signatures[index] ?? ParameterList(numParameters: op.parameters.count, hasRestParam: op.parameters.hasRestParameter)
     }
 
     /// Attempts to infer the return value type of the given function.
@@ -122,6 +132,9 @@ public struct TypeAnaylzer: Analyzer {
     }
     private mutating func processScopeChanges(_ instr: Instruction) {
         switch instr.op.opcode {
+        case .beginTable,
+             .endTable:
+            break
         case .beginFunction:
             activeFunctionDefinitions.push(instr)
             state.startSubroutine()
@@ -180,6 +193,20 @@ public struct TypeAnaylzer: Analyzer {
             //  .endRepeatLoop:
             //  .endCodeString:
             state.endGroupOfConditionallyExecutingBlocks(typeChanges: &typeChanges)
+        case .beginTableMethod:
+            activeFunctionDefinitions.push(instr)
+            state.startSubroutine()
+        case .endTableMethod:
+            let begin = activeFunctionDefinitions.pop()
+            let returnValueType = state.endSubroutine(typeChanges: &typeChanges, defaultReturnValueType: [])
+            switch begin.op.opcode{
+            case .beginTableMethod(let op):
+                let paramlist = inferSubroutineParameterList(of: op, at: instr.index)
+                activeTables.top.add(method:op.methodName, signature: paramlist => returnValueType)
+            default:
+                fatalError("endTableMethod doesn't match with beginTableMethod")
+            }
+            
         default:
             assert(instr.isSimple)
 
@@ -360,7 +387,7 @@ public struct TypeAnaylzer: Analyzer {
                 }
             }
         case .createArray:
-            set(instr.output,LuaType.table(ofGroup: "table", withArrayType: [.undefined] + instr.inputs.map({state.type(of: $0)})))
+            set(instr.output,LuaType.table(ofGroup: "table", withArrayType: Dictionary(uniqueKeysWithValues: zip(0...instr.numInputs + 1, [.undefined] + instr.inputs.map({state.type(of: $0)})))))
 
         case .getProperty(let op):
             set(instr.output, inferPropertyType(of: op.propertyName, on: instr.input(0)))
@@ -375,8 +402,27 @@ public struct TypeAnaylzer: Analyzer {
             set(instr.input(0), type(ofInput: 0).removing(property: op.propertyName))
 
         case .getElement(let op):
-            set(instr.output, type(ofInput: 0).arraytype[Int(op.index)])
+            set(instr.output, type(ofInput: 0).arraytype[Int(op.index)] ?? .undefined)
 
+        case .setElement(let op):
+            set(instr.input(0), type(ofInput: 0).adding(index: Int(op.index), elementType: type(ofInput: 1)))
+
+        case .updateElement(let op):
+            set(instr.input(0), type(ofInput: 0).adding(index: Int(op.index), elementType:analyzeBinaryOperation(operator: op.op, withInputs: [type(ofInput: 0).arraytype[Int(op.index)] ?? .undefined, type(ofInput: 1)]) ))
+        
+        case .deleteElement(let op):
+            set(instr.input(0), type(ofInput: 0).removing(index: Int(op.index)))
+        case .beginTable:
+            activeTables.push(.table())
+        case .tableAddProperty(let op):
+            activeTables.top.add(property: op.propertyName, propertyType: op.hasValue ? type(ofInput: 0) : .undefined)
+        case .tableAddElement(let op):
+            activeTables.top.add(index: Int(op.index), elementType: type(ofInput: 0))
+        case .beginTableMethod(let op):
+            processParameterDeclarations(instr.innerOutputs, parameters: inferSubroutineParameterList(of: op, at: instr.index))
+        case .endTable:
+            let objectType = activeTables.pop()
+            set(instr.output, objectType)
         default:
             // Only simple instructions and block instruction with inner outputs are handled here
             assert(instr.numOutputs == 0 || (instr.isBlock && instr.numInnerOutputs == 0))
