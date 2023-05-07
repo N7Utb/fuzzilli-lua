@@ -297,7 +297,7 @@ class ProgramBuilderTests: XCTestCase {
         for _ in 0..<10 {
             XCTAssertNotEqual(b.randomVariable(), Math)
         }
-
+    
         b.unhide(Math)
         XCTAssert(b.visibleVariables.contains(Math))
     }

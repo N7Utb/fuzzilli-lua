@@ -67,3 +67,15 @@ public struct ProgramComments {
     }
 }
 
+extension ProgramComments: ProtobufConvertible {
+    public typealias ProtobufType = [Int32: String]
+
+    public func asProtobuf() -> ProtobufType {
+        return comments
+    }
+
+    public init(from protobuf: ProtobufType) {
+        self.comments = protobuf
+    }
+}
+

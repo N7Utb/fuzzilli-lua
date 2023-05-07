@@ -93,9 +93,9 @@ public class ProgramBuilder {
     /// The `scopes` stack contains one entry per currently open scope containing all local variables created in that scope.
     private var scopes = Stack<[Variable]>([[]])
     /// The `variablesInScope` array simply contains all variables that are currently in scope. It is effectively the `scopes` stack flattened.
-    private var variablesInScope = [Variable]()
-    /// The `globalvariables` array simply contains all global variables 
-    private var globalvariable = [Variable]()
+    private var variablesInScope: [Variable] {
+        scopes.buffer.flatMap({$0})
+    }
 
     /// Keeps track of variables that have explicitly been hidden and so should not be
     /// returned from e.g. `randomVariable()`. See `hide()` for more details.
@@ -136,13 +136,16 @@ public class ProgramBuilder {
         contributors.removeAll()
         numVariables = 0
         scopes = Stack([[]])
-        variablesInScope.removeAll()
         hiddenVariables.removeAll()
         numberOfHiddenVariables = 0
         contextAnalyzer = ContextAnalyzer()
         typeanaylzer.reset()
         activeTableDefinitions.removeAll()
 
+    }
+
+    public func check() -> Bool{
+        return code.isStaticallyValid()
     }
 
     /// Finalizes and returns the constructed program, then resets this builder so it can be reused for building another program.
@@ -583,7 +586,6 @@ public class ProgramBuilder {
     public func unhide(_ variable: Variable) {
         assert(numberOfHiddenVariables > 0)
         assert(hiddenVariables.contains(variable))
-        assert(variablesInScope.contains(variable))
         assert(!visibleVariables.contains(variable))
 
         hiddenVariables.remove(variable)
@@ -873,12 +875,6 @@ public class ProgramBuilder {
             if let block = blocks[instr.index] {
                 instr = program.code[block.startIndex]
             }
-            /// TODO: Switch, Class Constructor
-            // if instr.op is BeginSwitchDefaultCase {
-            //     return false
-            // } else if instr.op is BeginClassConstructor {
-            //     return false
-            // }
             return true
         }
 
@@ -1184,7 +1180,7 @@ public class ProgramBuilder {
             }
         }
     }
-    
+
     /// Returns the next free label names
     public func nextLabel() -> String{
         numLabels += 1;
@@ -1295,49 +1291,95 @@ public class ProgramBuilder {
     /// Analyze the given instruction. Should be called directly after appending the instruction to the code.
     private func analyze(_ instr: Instruction) {
         assert(code.lastInstruction.op === instr.op)
+
+        // print("\(instr.op), \(instr.outputs), \(instr.innerOutputs), \(instr.inputs)")
+        // print("before \(scopes)")
+
         updateVariableAnalysis(instr)
         contextAnalyzer.analyze(instr)
         updateTableState(instr)
         typeanaylzer.analyze(instr)
+
+        // print("after \(scopes)")
+    }
+    
+    private var subroutine_stack = Stack<Subroutine>()
+    private var r_stack = Stack<[String]>()
+    private var t_stack = Stack<Int>()
+    private var table_count = 0
+    private var global_map = [Subroutine:[Variable]]()
+    enum Subroutine: Hashable{
+        case function(Variable)
+        case tmp_method(String, Int)
+        case method(String, Variable)
     }
 
-    private var globalvariable_map = VariableMap<[Variable]>()
-    private var function_stack = Stack<Variable>()
     private var label_stack = Stack<[String]>([[]])
     private func updateVariableAnalysis(_ instr: Instruction) {
-
         // Scope management (1).
         if instr.isBlockEnd {
             /// TODO: Block Analyze
             assert(scopes.count > 0, "Trying to close a scope that was never opened")
             let current = scopes.pop()
+
             // Hidden variables that go out of scope need to be unhidden.
             for v in current where hiddenVariables.contains(v) {
                 unhide(v)
             }
-            variablesInScope.removeLast(current.count)
-
             label_stack.pop()
         }
-        scopes.top.append(contentsOf: instr.outputs)
-        variablesInScope.append(contentsOf: instr.outputs)
-        if !function_stack.isEmpty {
-            instr.outputs.forEach({
-                if !$0.isLocal() { globalvariable_map[function_stack.top]?.append($0)}
-            })
+
+        var outputs = instr.outputs
+        switch instr.op.opcode{
+        case .callFunction:
+            outputs += global_map[.function(instr.input(0))] ?? []
+        case .callMethod(let op):
+            outputs += global_map[.method(op.methodName,instr.input(0))] ?? []
+        default:
+            break
         }
+
+        if !subroutine_stack.isEmpty {
+            scopes.top.append(contentsOf: outputs)
+            outputs.forEach({
+                if !$0.isLocal() { global_map[subroutine_stack.top]?.append($0)}
+            })
+        } else {
+            scopes.bottom.append(contentsOf: outputs.filter({!$0.isLocal()}))
+            scopes.top.append(contentsOf: outputs.filter({$0.isLocal()}))
+        }
+
         switch instr.op.opcode {
-            case .callFunction:
-                variablesInScope.append(contentsOf: globalvariable_map[instr.input(0)] ?? [])
-            case .beginFunction:
-                function_stack.push(instr.output)
-                globalvariable_map[instr.output] = []
-            case .endFunction:
-                let _ = function_stack.pop()
-            case .label(let op):
-                label_stack.top.append(op.value)
+        case .beginFunction:
+            subroutine_stack.push(.function(instr.output))
+            global_map[.function(instr.output)] = []
+        case .endFunction:
+            let _ = subroutine_stack.pop()
+        case .beginTable:
+            r_stack.push([])
+            t_stack.push(table_count)
+            table_count += 1
+        case .endTable:
+            let r = r_stack.pop()
+            let t = t_stack.pop()
+            for subroutine in r{
+                global_map[.method(subroutine, instr.output)] = global_map[.tmp_method(subroutine,t)]
+                global_map.removeValue(forKey: .tmp_method(subroutine, t))
+            }
+        case .beginTableMethod(let op):
+            subroutine_stack.push(.tmp_method(op.methodName, t_stack.top))
+            global_map[.tmp_method(op.methodName, t_stack.top)] = []
+        case .endTableMethod:
+            switch subroutine_stack.pop() {
+            case .tmp_method(let s,_):
+                r_stack.top.append(s)
             default:
-                break
+                fatalError("miss match on beginTableMethod and endTableMethod")
+            }
+        case .label(let op):
+            label_stack.top.append(op.value)
+        default:
+            break
             
         }
         // Scope management (2). Happens here since e.g. function definitions create a variable in the outer scope.
@@ -1347,7 +1389,6 @@ public class ProgramBuilder {
         }
 
         scopes.top.append(contentsOf: instr.innerOutputs)
-        variablesInScope.append(contentsOf: instr.innerOutputs)
     }
 
     private func updateTableState(_ instr: Instruction){
@@ -1552,11 +1593,9 @@ public class ProgramBuilder {
         emit(UpdateElement(index: index, operator: op), withInputs: [array, value])
     }
 
-    @discardableResult
     public func deleteElement(_ index: Int64, of array: Variable) {
         emit(DeleteElement(index: index), withInputs: [array])
     }
-
 
     @discardableResult
     public func callMethod(_ name: String, on object: Variable, withArgs arguments: [Variable] = [], numReturns: Int = 0, guard isGuarded: Bool = false) -> [Variable] {
@@ -1613,6 +1652,19 @@ public class ProgramBuilder {
         body(Array(i))
         emit(EndForInLoop())
     }
+
+    public func buildRepeatLoop(n numIterations: Int, _ body: (Variable) -> ()) {
+        let i = emit(BeginRepeatLoop(iterations: numIterations)).innerOutput
+        body(i)
+        emit(EndRepeatLoop())
+    }
+
+    public func buildRepeatLoop(n numIterations: Int, _ body: () -> ()) {
+        emit(BeginRepeatLoop(iterations: numIterations, exposesLoopCounter: false))
+        body()
+        emit(EndRepeatLoop())
+    }
+    
     public func loopBreak() {
         emit(LoopBreak())
     }

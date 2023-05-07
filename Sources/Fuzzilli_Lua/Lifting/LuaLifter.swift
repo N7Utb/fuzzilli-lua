@@ -46,7 +46,6 @@ public class LuaLifter: Lifter {
         if needToSupportProbing {
             // w.emitBlock(JavaScriptProbeHelper.prefixCode)
         }
-
         for instr in program.code {
             if options.contains(.includeComments), let comment = program.comments.at(.instruction(instr.index)) {
                 w.emitComment(comment)
@@ -355,6 +354,35 @@ public class LuaLifter: Lifter {
             case .endForInLoop:
                 w.leaveCurrentBlock()
                 w.emit("end")
+            case .beginRepeatLoop(let op):
+                let I: String
+                if op.exposesLoopCounter {
+                    I = w.declare(instr.innerOutput)
+                } else {
+                    I = "i"
+                }
+                w.emit("\(I) = 0")
+                w.emit("repeat")
+                w.enterNewBlock()
+                w.emit("\(I) = \(I) + 1")
+            case .endRepeatLoop:
+                let begin = program.code[program.code.findBlockBegin(end: instr.index)]
+                switch begin.op.opcode{
+                    case .beginRepeatLoop(let op):
+                        let COND: String
+                        
+                        if op.exposesLoopCounter{
+                            COND = "\(begin.innerOutput) >= \(op.iterations)"
+                        }
+                        else{
+                            COND = "i >= \(op.iterations)"
+                        }
+                        w.leaveCurrentBlock()
+                        w.emit("until(\(COND))")
+                    default:
+                        fatalError("Repeat Loop doesn't match")
+                }
+
             case .createArray:
                 var elems = inputs.map({$0.text}).map({ $0 == "undefined" ? "" : $0 }).joined(separator: ",")
                 if elems.last == "," || (instr.inputs.count == 1 && elems == "") {
@@ -385,7 +413,6 @@ public class LuaLifter: Lifter {
         if options.contains(.includeComments), let footer = program.comments.at(.footer) {
             w.emitComment(footer)
         }
-
         // w.emitBlock(suffix)
         return w.code
     }
@@ -507,7 +534,7 @@ public class LuaLifter: Lifter {
         // The expression for a FuzzIL variable can generally either be
         //  * an identifier like "v42" if the FuzzIL variable is mapped to a JavaScript variable OR
         //  * an arbitrary expression if the expression producing the FuzzIL variable is a candidate for inlining
-        private var expressions = VariableMap<Expression>()
+        public var expressions = VariableMap<Expression>()
 
         // List of effectful expressions that are still waiting to be inlined. In the order that they need to be executed at runtime.
         // The expressions are identified by the FuzzIL output variable that they generate. The actual expression is stored in the expressions dictionary.
@@ -872,7 +899,8 @@ public class LuaLifter: Lifter {
                 // usually will just lead to the expression being emitted as soon as the next line of code is emitted,
                 // however it is necessary to be able to combime multiple expressions into a single comma-expression as
                 // is done for example when lifting loop headers.
-                return analyzer.numUses(of: v) <= 1
+                // return analyzer.numUses(of: v) <= 1
+                return false
             }
         }
     }

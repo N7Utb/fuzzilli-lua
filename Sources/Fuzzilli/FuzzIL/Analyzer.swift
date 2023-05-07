@@ -194,3 +194,4 @@ struct DeadCodeAnalyzer: Analyzer {
         assert(depth >= 0)
     }
 }
+

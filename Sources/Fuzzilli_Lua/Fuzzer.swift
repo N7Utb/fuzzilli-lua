@@ -30,6 +30,9 @@ public class Fuzzer {
     /// The corpus of "interesting" programs found so far.
     public let corpus: Corpus
 
+    /// The minimizer to shrink programs that cause crashes or trigger new interesting behaviour.
+    public let minimizer: Minimizer
+
     /// The engine used for initial corpus generation (if performed).
     public let corpusGenerationEngine = GenerativeEngine()
 
@@ -139,6 +142,7 @@ public class Fuzzer {
                 environment: Environment,
                 lifter: Lifter,
                 corpus: Corpus,
+                minimizer: Minimizer,
                 scriptrunner: ScriptRunner,
                 codeGenerators: WeightedList<CodeGenerator>,
                 queue: DispatchQueue? = nil){
@@ -157,7 +161,7 @@ public class Fuzzer {
         self.logger = Logger(withLabel: "Fuzzer")
         self.queue = queue ?? DispatchQueue(label: "Fuzzer \(uniqueId)", target: DispatchQueue.global())
         self.timers = Timers(queue: self.queue)
-
+        self.minimizer = minimizer
         self.queue.setSpecific(key: Fuzzer.dispatchQueueKey, value: self)
 
     }
@@ -176,10 +180,9 @@ public class Fuzzer {
         assert(modules[module.name] == nil)
 
         modules[module.name] = module
-        
-        /// TODO: childnode
+    
         // We only allow one instance of certain modules.
-        // assert(modules.values.filter( { $0 is DistributedFuzzingChildNode }).count <= 1)
+        assert(modules.values.filter( { $0 is DistributedFuzzingChildNode }).count <= 1)
     }
 
     /// Initializes this fuzzer.
@@ -199,7 +202,7 @@ public class Fuzzer {
         evaluator.initialize(with: self)
         environment.initialize(with: self)
         corpus.initialize(with: self)
-        // minimizer.initialize(with: self)
+        minimizer.initialize(with: self)
         corpusGenerationEngine.initialize(with: self)
 
         // Finally initialize all modules.
@@ -222,17 +225,16 @@ public class Fuzzer {
         // Determine our initial state if necessary.
         assert(state == .uninitialized || state == .corpusImport)
         if state == .uninitialized {
-            /// TODO: childNode
-            // let isChildNode = modules.values.contains(where: { $0 is DistributedFuzzingChildNode })
-            // if isChildNode {
-            //     // We're a child node, so wait until we've received some kind of corpus from our parent node.
-            //     // We'll change our state when we're synchronized with our parent, see updateStateAfterSynchronizingWithParentNode() below.
-            //     changeState(to: .waiting)
-            // } else {
-            //     // Start with corpus generation.
-            //     assert(corpus.isEmpty)
-            //     changeState(to: .corpusGeneration)
-            // }
+            let isChildNode = modules.values.contains(where: { $0 is DistributedFuzzingChildNode })
+            if isChildNode {
+                // We're a child node, so wait until we've received some kind of corpus from our parent node.
+                // We'll change our state when we're synchronized with our parent, see updateStateAfterSynchronizingWithParentNode() below.
+                changeState(to: .waiting)
+            } else {
+                // Start with corpus generation.
+                assert(corpus.isEmpty)
+                changeState(to: .corpusGeneration)
+            }
 
             assert(corpus.isEmpty)
             changeState(to: .corpusGeneration)
@@ -343,19 +345,19 @@ public class Fuzzer {
                 corpus.add(program, aspects)
             }
         }
-        /// TODO: Minizer
-        finishProcessing(program)
-        // if !origin.requiresMinimization() {
-        //     finishProcessing(program)
-        // } else {
-        //     // Minimization should be performed as part of the fuzzing dispatch group. This way, the next fuzzing iteration
-        //     // will only start once the curent sample has been fully processed and inserted into the corpus.
-        //     fuzzGroup.enter()
-        //     minimizer.withMinimizedCopy(program, withAspects: aspects, limit: config.minimizationLimit) { minimizedProgram in
-        //         self.fuzzGroup.leave()
-        //         finishProcessing(minimizedProgram)
-        //     }
-        // }
+
+        // finishProcessing(program)
+        if !origin.requiresMinimization() {
+            finishProcessing(program)
+        } else {
+            // Minimization should be performed as part of the fuzzing dispatch group. This way, the next fuzzing iteration
+            // will only start once the curent sample has been fully processed and inserted into the corpus.
+            fuzzGroup.enter()
+            minimizer.withMinimizedCopy(program, withAspects: aspects, limit: config.minimizationLimit) { minimizedProgram in
+                self.fuzzGroup.leave()
+                finishProcessing(minimizedProgram)
+            }
+        }
         return true
     }
 
@@ -389,16 +391,16 @@ public class Fuzzer {
                 dispatchEvent(events.CrashFound, data: (program, .flaky, true, origin))
             }
         }
-        /// TODO: Minizer
+
         if !origin.requiresMinimization() {
             return processCommon(program)
         }
-        return processCommon(program)
-        // fuzzGroup.enter()
-        // minimizer.withMinimizedCopy(program, withAspects: ProgramAspects(outcome: .crashed(termsig))) { minimizedProgram in
-        //     self.fuzzGroup.leave()
-        //     processCommon(minimizedProgram)
-        // }
+
+        fuzzGroup.enter()
+        minimizer.withMinimizedCopy(program, withAspects: ProgramAspects(outcome: .crashed(termsig))) { minimizedProgram in
+            self.fuzzGroup.leave()
+            processCommon(minimizedProgram)
+        }
     }
 
 
@@ -494,6 +496,38 @@ public class Fuzzer {
         }
     }
 
+    /// Determine the new state of this fuzzer after synchronizing with its parent node during distributed fuzzing.
+    ///
+    /// This method is expected to be called by child node modules during distributed fuzzing when they have connected
+    /// to their parent node and synchronized this fuzzer's state with that of the parent node. This method will then
+    /// determine the appropriate new state (typically .fuzzing) and dispatch the Synchronized event.
+    public func updateStateAfterSynchronizingWithParentNode() {
+        if state != .waiting {
+            // Nothing to do
+            return
+        }
+
+        if corpus.isEmpty && config.staticCorpus {
+            // This is a bit unfortunate: we are synchronized with our parent, which is presumably
+            // doing a corpus import, but haven't received any samples yet, so can't start fuzzing.
+            // Since we'll receive corpus samples as they are imported by our parent, we simply
+            // stay in the .waiting mode for some more time...
+            logger.info("Waiting some more time to receive corpus samples from parent instance...")
+            return timers.runAfter(15 * Seconds, updateStateAfterSynchronizingWithParentNode)
+        } else if corpus.isEmpty {
+            // Even after synchronizing with our parent node, we may still be left with an empty corpus.
+            // This can for example happen if the parent is configured to not share its corpus with its children,
+            // or because it itself still has an empty corpus. In that case, we simply do corpus generation.
+            changeState(to: .corpusGeneration)
+        } else {
+            changeState(to: .fuzzing)
+        }
+
+        // We only dispatch the Synchronized event once, when we do the .waiting -> someOtherState transition.
+        assert(state != .waiting)
+        dispatchEvent(events.Synchronized)
+    }
+
     /// Starts the fuzzer and runs for the specified number of iterations.
     ///
     /// This must be called after initializing the fuzzer.
@@ -582,6 +616,47 @@ public class Fuzzer {
         }
 
         return execution.outcome
+    }
+
+    /// Schedules the given corpus of programs to be imported into this fuzzer.
+    ///
+    /// Corpus import happens asynchronously as it may take a considerable amount of time (each program
+    /// needs to be executed and possibly minimized). During corpus import, the current progress can be
+    /// obtained from corpusImportProgress().
+    public func scheduleCorpusImport(_ corpus: [Program], importMode: CorpusImportMode, enableDropout: Bool = false) {
+        dispatchPrecondition(condition: .onQueue(queue))
+        // Currently we only allow corpus import when the fuzzer is still uninitialized.
+        // If necessary, this can be changed, but we'd need to be able to correctly handle the .waiting -> .corpusImport state transition.
+        assert(state == .uninitialized)
+
+        guard state != .corpusImport && currentCorpusImportJob.isFinished else {
+            // TODO support this
+            return logger.error("Cannot currently schedule multiple corpus imports")
+        }
+
+        guard !corpus.isEmpty else {
+            // Nothing to do.
+            return
+        }
+
+        currentCorpusImportJob = CorpusImportJob(corpus: corpus, mode: importMode)
+        changeState(to: .corpusImport)
+    }
+
+
+    /// Imports a crashing program into this fuzzer.
+    ///
+    /// Similar to importProgram, but will make sure to generate a CrashFound event even if the crash does not reproduce.
+    public func importCrash(_ program: Program, origin: ProgramOrigin) {
+        dispatchPrecondition(condition: .onQueue(queue))
+
+        let execution = execute(program)
+        if case .crashed(let termsig) = execution.outcome {
+            processCrash(program, withSignal: termsig, withStderr: execution.stderr, withStdout: execution.stdout, origin: origin, withExectime: execution.execTime)
+        } else {
+            // Non-deterministic crash
+            dispatchEvent(events.CrashFound, data: (program, behaviour: .flaky, isUnique: true, origin: origin))
+        }
     }
 
     /// A pending corpus import job together with some statistics.

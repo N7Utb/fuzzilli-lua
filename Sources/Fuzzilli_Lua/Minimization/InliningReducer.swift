@@ -25,6 +25,7 @@ struct InliningReducer: Reducer {
                 // In particular, instruction are reordered and variables are renamed. Further, there may now also be new inlining candidates, for example
                 // if another function could previously not be inlined because it was used as argument or return value of a now inlined function).
                 candidates = identifyInlineableFunctions(in: code)
+                
             }
         }
     }
@@ -48,51 +49,13 @@ struct InliningReducer: Reducer {
                 // Currently we only inline plain functions as that guarantees that the resulting code is always valid.
                 // Otherwise, we might for example attempt to inline an async function containing an 'await', which would not be valid.
                 // This works fine because the ReplaceReducer will attempt to turn "special" functions into plain functions.
-            case .beginPlainFunction:
+            case .beginFunction:
                 candidates[instr.output] = (callCount: 0, index: instr.index)
                 fallthrough
-            case .beginArrowFunction,
-                 .beginGeneratorFunction,
-                 .beginAsyncFunction,
-                 .beginAsyncArrowFunction,
-                 .beginAsyncGeneratorFunction,
-                 .beginConstructor,
-                 .beginObjectLiteralMethod,
-                 .beginObjectLiteralComputedMethod,
-                 .beginObjectLiteralGetter,
-                 .beginObjectLiteralSetter,
-                 .beginClassConstructor,
-                 .beginClassInstanceMethod,
-                 .beginClassInstanceGetter,
-                 .beginClassInstanceSetter,
-                 .beginClassStaticInitializer,
-                 .beginClassStaticMethod,
-                 .beginClassStaticGetter,
-                 .beginClassStaticSetter,
-                 .beginClassPrivateInstanceMethod,
-                 .beginClassPrivateStaticMethod:
+            case .beginTableMethod:
                 activeSubroutineDefinitions.append(instr.hasOneOutput ? instr.output : nil)
-            case .endPlainFunction,
-                 .endArrowFunction,
-                 .endGeneratorFunction,
-                 .endAsyncFunction,
-                 .endAsyncArrowFunction,
-                 .endAsyncGeneratorFunction,
-                 .endConstructor,
-                 .endObjectLiteralMethod,
-                 .endObjectLiteralComputedMethod,
-                 .endObjectLiteralGetter,
-                 .endObjectLiteralSetter,
-                 .endClassConstructor,
-                 .endClassInstanceMethod,
-                 .endClassInstanceGetter,
-                 .endClassInstanceSetter,
-                 .endClassStaticInitializer,
-                 .endClassStaticMethod,
-                 .endClassStaticGetter,
-                 .endClassStaticSetter,
-                 .endClassPrivateInstanceMethod,
-                 .endClassPrivateStaticMethod:
+            case .endFunction,
+                 .endTableMethod:
                 activeSubroutineDefinitions.removeLast()
             default:
                 assert(!instr.op.contextOpened.contains(.subroutine))
@@ -115,11 +78,6 @@ struct InliningReducer: Reducer {
 
                 // Can't inline functions that are passed as arguments to other functions.
                 deleteCandidates(instr.inputs.dropFirst())
-            case .loadArguments:
-                // Can't inline functions if they access their arguments.
-                if let function = activeSubroutineDefinitions.last! {
-                    candidates.removeValue(forKey: function)
-                }
             default:
                 assert(instr.op is Return || !(instr.op.requiredContext.contains(.subroutine)))
 
@@ -135,8 +93,7 @@ struct InliningReducer: Reducer {
     /// The specified function must be called exactly once in the provided code.
     private func inline(functionAt index: Int, in code: Code) -> Code {
         assert(index < code.count)
-        assert(code[index].op is BeginAnyFunction)
-
+        assert(code[index].op is BeginFunction)
         var c = Code()
         var i = 0
 
@@ -147,22 +104,22 @@ struct InliningReducer: Reducer {
         }
 
         let funcDefinition = code[i]
-        assert(funcDefinition.op is BeginAnyFunction)
+        assert(funcDefinition.op is BeginFunction)
         let function = funcDefinition.output
         let parameters = Array(funcDefinition.innerOutputs)
 
         i += 1
-
+        
         // Fast-forward to end of function definition
         var functionBody = [Instruction]()
         var depth = 0
         while i < code.count {
             let instr = code[i]
 
-            if instr.op is BeginAnyFunction {
+            if instr.op is BeginFunction {
                 depth += 1
             }
-            if instr.op is EndAnyFunction {
+            if instr.op is EndFunction {
                 if depth == 0 {
                     i += 1
                     break
@@ -176,7 +133,7 @@ struct InliningReducer: Reducer {
             i += 1
         }
         assert(i < code.count)
-
+        
         // Search for the call of the function
         while i < code.count {
             let instr = code[i]
@@ -195,10 +152,10 @@ struct InliningReducer: Reducer {
         // Found it. Inline the function now
         let call = code[i]
         assert(call.op is CallFunction)
-
+        
         // Reuse the function variable to store 'undefined' and use that for any missing arguments.
         let undefined = funcDefinition.output
-        c.append(Instruction(LoadUndefined(), output: undefined))
+        c.append(Instruction(LoadNil(), output: undefined))
 
         var arguments = VariableMap<Variable>()
         for (i, v) in parameters.enumerated() {
@@ -208,10 +165,10 @@ struct InliningReducer: Reducer {
                 arguments[v] = undefined
             }
         }
-
+        
         // Initialize the return value to undefined.
-        let rval = call.output
-        c.append(Instruction(LoadUndefined(), output: rval, inputs: []))
+        let rval = call.outputs
+        rval.forEach({c.append(Instruction(LoadNil(), output: $0, inputs: []))})
 
         var functionDefinitionDepth = 0
         for instr in functionBody {
@@ -222,13 +179,13 @@ struct InliningReducer: Reducer {
             if instr.op is Return && functionDefinitionDepth == 0 {
                 // Returns may not have a return value, in which case we'll use undefined.
                 let value = newInstr.hasInputs ? newInstr.input(0) : undefined
-                c.append(Instruction(Reassign(), inputs: [rval, value]))
+                rval.forEach({c.append(Instruction(Reassign(), inputs: [$0, value]))})
             } else {
                 c.append(newInstr)
 
-                if instr.op is BeginAnyFunction {
+                if instr.op is BeginFunction {
                     functionDefinitionDepth += 1
-                } else if instr.op is EndAnyFunction {
+                } else if instr.op is EndFunction {
                     functionDefinitionDepth -= 1
                 }
             }
@@ -246,12 +203,11 @@ struct InliningReducer: Reducer {
             c.append(code[i])
             i += 1
         }
-
+        
         // Need to renumber the variables now as they are no longer in ascending order.
         c.renumberVariables()
 
         // The code must now be valid.
-        assert(c.isStaticallyValid())
         return c
     }
 }

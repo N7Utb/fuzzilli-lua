@@ -7,6 +7,7 @@ import Fuzzilli_Lua
 let args = Arguments.parse(from: CommandLine.arguments)
 let swarmTesting = args.has("--swarmTesting")
 let consecutiveMutations = args.int(for: "--consecutiveMutations") ?? 5
+let numJobs = args.int(for: "--jobs") ?? 1
 let DebugTest = args.has("--debug")
 var exitCondition = Fuzzer.ExitCondition.none
 
@@ -18,7 +19,6 @@ let profile = LuaProfile
 ///
 /// Chose the code generator weights.
 ///
-
 if swarmTesting {
     logger.info("Choosing the following weights for Swarm Testing mode.")
     logger.info("Weight | CodeGenerator")
@@ -69,11 +69,13 @@ func makeFuzzer(with configuration: Configuration) -> Fuzzer
         (InputMutator(isTypeAware: false),  2),
         (InputMutator(isTypeAware: true),   1),
         // Can be enabled for experimental use, ConcatMutator is a limited version of CombineMutator
-        // (ConcatMutator(),                1),
+        (ConcatMutator(),                   1),
         (OperationMutator(),                1),
         (CombineMutator(),                  1),
-        // (JITStressMutator(),                1),
+        (JITStressMutator(),                1),
     ])
+    // Minimizer to minimize crashes and interesting programs.
+    let minimizer = Minimizer()
     return Fuzzer(configuration: configuration,
                   evaluator: evaluator, 
                   engine: engine, 
@@ -81,6 +83,7 @@ func makeFuzzer(with configuration: Configuration) -> Fuzzer
                   environment: environment, 
                   lifter: lifter, 
                   corpus: corpus, 
+                  minimizer: minimizer,
                   scriptrunner: runner, 
                   codeGenerators: codeGenerators)
     
@@ -109,10 +112,33 @@ func unitTest(with fuzzer: Fuzzer){
     
     // b.buildLabel(b.nextLabel())
     // let v1 = b.loadNumber(123)
-    let _ = b.loadString("abc")
-    b.test()
-    // let s = b.loadBuiltin("math")
+    // let _ = b.loadString("abc")
+    // // let s = b.loadBuiltin("math")
+    // b.buildRepeatLoop(n: 10){
+    //     b.loadString("abc")
+    // }
+    // b.buildRepeatLoop(n: 10){ v in
+    //     b.loadString("abc")
+
+    // }
+
     
+    // let f1 = b.buildFunction(with: .parameters(n: 0)) { _ in
+    //     b.loadString("ccc")
+    // }
+    // let t1 = b.buildTable({ td in
+    //     td.addMethod("a", with: .parameters(n: 0)){ v in
+    //         b.loadString("ddd")
+    //         b.loadNumber(2)
+    //         let f2 = b.buildFunction(with: .parameters(n: 0)) { _ in
+    //             b.loadString("ccc")
+    //         }
+    //         b.callFunction(f2)
+    //     }
+    // })
+    // b.callFunction(f1)
+    // b.callMethod("a", on: t1)
+
 
     // b.loadNumber(4)
     // let v1 = b.loadNumber(5)
@@ -132,7 +158,15 @@ func unitTest(with fuzzer: Fuzzer){
 
     // }
     // print(b.type(of: s))
-
+    let loopVar = b.loadNumber(0)
+    let c1 = b.compare(loopVar, with: b.loadNumber(Float64.random(in: 1...10)), using: .lessThan) 
+    var c2: Variable = b.loadNumber(0)
+    b.buildWhileLoop({ 
+        c2 = b.compare(loopVar, with: b.loadNumber(Float64.random(in: 1...10)), using: .lessThan) 
+        return c1}, {
+            b.loadNumber(0)
+            b.compare(c2, with: b.loadNumber(Float64.random(in: 1...10)), using: .lessThan) 
+        })
     
     // b.run(CodeGenerators.get("PropertyAssignmentGenerator"))
     // b.run(CodeGenerators.get("PropertyUpdateGenerator"))
@@ -144,6 +178,7 @@ func unitTest(with fuzzer: Fuzzer){
     //     return b.binary(b.loadNumber(5), b.loadNumber(0), with: BinaryOperator.Add)
     // }, {  
     //     b.loadNumber(123)
+        
     //     return b.loadNumber(10)
     // }, {
     //     b.loadNumber(123)
@@ -160,6 +195,10 @@ func unitTest(with fuzzer: Fuzzer){
     // }
     // b.buildLabel(label)
     let p1 = b.finalize()
+    
+    // let execution = fuzzer.execute(p1)
+    // let aspects = fuzzer.evaluator.evaluate(execution)
+    // let _ = fuzzer.minimizer.minimize(p1, withAspects: aspects!)
     // let mutator = InputMutator(isTypeAware: true)
     // let p2 = mutator.mutate(p1, for: fuzzer)
     // print(fuzzer.lifter.lift(p2!))
@@ -186,6 +225,11 @@ fuzzer.sync{
     // Always want some statistics.
     fuzzer.addModule(Statistics())
 
+    // Synchronize with thread workers if requested.
+    if numJobs > 1 {
+        fuzzer.addModule(ThreadParent(for: fuzzer))
+    }
+
     // Exit this process when the main fuzzer stops.
     fuzzer.registerEventListener(for: fuzzer.events.ShutdownComplete) { reason in
         exit(reason.toExitCode())
@@ -197,6 +241,29 @@ fuzzer.sync{
     // Start the main fuzzing job.
     fuzzer.start(runUntil: exitCondition)
 }
+
+// Add thread worker instances if requested
+// Worker instances use a slightly different configuration, mostly just a lower log level.
+let workerConfig = Configuration(logLevel: .verbose)
+
+for _ in 1..<numJobs {
+    let worker = makeFuzzer(with: workerConfig)
+    worker.async {
+        // Wait some time between starting workers to reduce the load on the main instance.
+        // If we start the workers right away, they will all very quickly find new coverage
+        // and send lots of (probably redundant) programs to the main instance.
+        let minDelay = 1 * Minutes
+        let maxDelay = 10 * Minutes
+        let delay = Double.random(in: minDelay...maxDelay)
+        Thread.sleep(forTimeInterval: delay)
+
+        worker.addModule(Statistics())
+        worker.addModule(ThreadChild(for: worker, parent: fuzzer))
+        worker.initialize()
+        worker.start()
+    }
+}
+
 // Install signal handlers to terminate the fuzzer gracefully.
 var signalSources: [DispatchSourceSignal] = []
 for sig in [SIGINT, SIGTERM] {

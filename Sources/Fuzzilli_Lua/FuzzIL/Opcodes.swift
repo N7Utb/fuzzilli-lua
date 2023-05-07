@@ -76,6 +76,11 @@ enum Opcode {
     case tableAddElement(TableAddElement)
     case beginTableMethod(BeginTableMethod)
     case endTableMethod(EndTableMethod)
+    case beginRepeatLoop(BeginRepeatLoop)
+    case endRepeatLoop(EndRepeatLoop)
+    // case setMetaTable(SetMetaTable)
+    // case getMetaTable(GetMetaTable)
+    // case probe(Probe)
     // case loadUndefined(LoadUndefined)
     // case loadNull(LoadNull)
     // case loadThis(LoadThis)
@@ -216,8 +221,7 @@ enum Opcode {
     // case beginForOfLoop(BeginForOfLoop)
     // case beginForOfLoopWithDestruct(BeginForOfLoopWithDestruct)
     // case endForOfLoop(EndForOfLoop)
-    // case beginRepeatLoop(BeginRepeatLoop)
-    // case endRepeatLoop(EndRepeatLoop)
+
     // case loopBreak(LoopBreak)
     // case loopContinue(LoopContinue)
     // case beginTry(BeginTry)
@@ -232,5 +236,5 @@ enum Opcode {
 
     // case print(Print)
     // case explore(Explore)
-    // case probe(Probe)
+    
 }

@@ -225,9 +225,21 @@ public let CodeGenerators: [CodeGenerator] = [
     },
     RecursiveCodeGenerator("ForInLoopGenerator", input: .iterable + .function()) { b, obj in
         b.buildForInLoop(obj) { _ in
-            // b.buildRecursive()
+            b.buildRecursive()
         }
     },
+    
+    RecursiveCodeGenerator("RepeatLoopGenerator") { b in
+        let numIterations = Int.random(in: 2...100)
+        b.buildRepeatLoop(n: numIterations) { _ in
+            b.buildRecursive()
+        }
+    },
+
+    CodeGenerator("LoopBreakGenerator", inContext: .loop) { b in
+        b.loopBreak()
+    },
+
     CodeGenerator("PairGenerator", input: .table()) { b, obj in
         b.buildPair(obj)
     },

@@ -63,7 +63,9 @@ let package = Package(
                 ],
                 exclude: [
                     "Protobuf/sync.proto",
-                    "Minimization/"]
+                    "Protobuf/operations.proto",
+                    "Protobuf/program.proto"
+                    ]
                 ),
 
         .target(name: "REPRLRun",

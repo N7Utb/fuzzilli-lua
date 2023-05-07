@@ -56,5 +56,7 @@ public let codeGeneratorWeights = [
     "TableMethodGenerator":                     5,
 
     "NumberComputationGenerator":               10,
+    "LoopBreakGenerator":                       5,
+    "RepeatLoopGenerator":                      10
 
 ]

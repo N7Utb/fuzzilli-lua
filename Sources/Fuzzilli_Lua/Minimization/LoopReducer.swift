@@ -36,13 +36,9 @@ struct LoopReducer: Reducer {
                 tryReplaceForLoopWithRepeatLoop(group, in: &code, with: helper)
             case .beginWhileLoopHeader:
                 tryReplaceWhileLoopWithRepeatLoop(group, in: &code, with: helper)
-            case .beginDoWhileLoopBody:
-                tryReplaceDoWhileLoopWithRepeatLoop(group, in: &code, with: helper)
             case .beginRepeatLoop:
                 tryReduceRepeatLoopIterationCount(group, in: &code, with: helper)
-            case .beginForInLoop,
-                    .beginForOfLoop,
-                    .beginForOfLoopWithDestruct:
+            case .beginForInLoop:
                 // These loops are (usually) guaranteed to terminate, and should probably anyway not be replaced by repeat-loops.
                 break
             default:
@@ -102,18 +98,18 @@ struct LoopReducer: Reducer {
             newCode.append(Instruction(instr.op, inouts: newInouts))
         }
 
-        let bodyBlock = group.block(3)
-        assert(code[bodyBlock.head].op is BeginForLoopBody)
-        replacements = Dictionary<Variable, Variable>(uniqueKeysWithValues: code[bodyBlock.head].innerOutputs.map({ ($0, loopVar!) }))
-        for instr in code.body(of: bodyBlock) {
-            let newInouts = instr.inouts.map({ replacements[$0] ?? $0 })
-            newCode.append(Instruction(instr.op, inouts: newInouts))
-        }
-
         let afterthoughtBlock = group.block(2)
         assert(code[afterthoughtBlock.head].op is BeginForLoopAfterthought)
         replacements = Dictionary<Variable, Variable>(uniqueKeysWithValues: code[afterthoughtBlock.head].innerOutputs.map({ ($0, loopVar!) }))
         for instr in code.body(of: afterthoughtBlock) {
+            let newInouts = instr.inouts.map({ replacements[$0] ?? $0 })
+            newCode.append(Instruction(instr.op, inouts: newInouts))
+        }
+
+        let bodyBlock = group.block(3)
+        assert(code[bodyBlock.head].op is BeginForLoopBody)
+        replacements = Dictionary<Variable, Variable>(uniqueKeysWithValues: code[bodyBlock.head].innerOutputs.map({ ($0, loopVar!) }))
+        for instr in code.body(of: bodyBlock) {
             let newInouts = instr.inouts.map({ replacements[$0] ?? $0 })
             newCode.append(Instruction(instr.op, inouts: newInouts))
         }
@@ -164,45 +160,6 @@ struct LoopReducer: Reducer {
         tryReplacingWithShortestPossibleRepeatLoop(range: group.head...group.tail, in: &code, with: &newCode, loopHeaderIndexInNewCode: 0, using: helper)
     }
 
-    private func tryReplaceDoWhileLoopWithRepeatLoop(_ group: BlockGroup, in code: inout Code, with helper: MinimizationHelper) {
-        // Turn
-        //
-        //      BeginDoWhileLoopBody
-        //          body()
-        //      BeginDoWhileLoopHeader
-        //          header()
-        //      EndDoWhileLoop v7
-        //
-        // Into
-        //
-        //      BeginRepeatLoop 'n'
-        //          body()
-        //          header()
-        //      EndRepeatLoop
-        //
-        var newCode = [Instruction]()
-
-        // Append loop header
-        newCode.append(Instruction(BeginRepeatLoop(iterations: 1, exposesLoopCounter: false)))
-
-        // Append loop body and header code
-        let bodyBlock = group.block(0)
-        assert(code[bodyBlock.head].op is BeginDoWhileLoopBody)
-        for instr in code.body(of: bodyBlock) {
-            newCode.append(instr)
-        }
-
-        let headerBlock = group.block(1)
-        assert(code[headerBlock.head].op is BeginDoWhileLoopHeader)
-        for instr in code.body(of: headerBlock) {
-            newCode.append(instr)
-        }
-
-        // Append loop footer
-        newCode.append(Instruction(EndRepeatLoop()))
-
-        tryReplacingWithShortestPossibleRepeatLoop(range: group.head...group.tail, in: &code, with: &newCode, loopHeaderIndexInNewCode: 0, using: helper)
-    }
 
     private func tryReduceRepeatLoopIterationCount(_ group: BlockGroup, in code: inout Code, with helper: MinimizationHelper) {
         let originalLoopHeader = code[group.head].op as! BeginRepeatLoop

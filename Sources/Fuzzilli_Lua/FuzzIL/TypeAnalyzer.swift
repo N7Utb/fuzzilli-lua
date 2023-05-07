@@ -179,9 +179,9 @@ public struct TypeAnaylzer: Analyzer {
             // Loop headers execute unconditionally (at least once).
             break
         case .beginWhileLoopBody,
-             .beginForInLoop:
+             .beginForInLoop,
             //  .beginForOfLoopWithDestruct,
-            //  .beginRepeatLoop:
+             .beginRepeatLoop:
             //  .beginCodeString:
             state.startGroupOfConditionallyExecutingBlocks()
             // Push an empty state representing the case when the loop body (or code string) is not executed at all
@@ -189,8 +189,8 @@ public struct TypeAnaylzer: Analyzer {
             // Push a new state tracking the types inside the loop
             state.enterConditionallyExecutingBlock(typeChanges: &typeChanges)
         case .endWhileLoop,
-             .endForInLoop:
-            //  .endRepeatLoop:
+             .endForInLoop,
+             .endRepeatLoop:
             //  .endCodeString:
             state.endGroupOfConditionallyExecutingBlocks(typeChanges: &typeChanges)
         case .beginTableMethod:
@@ -385,6 +385,10 @@ public struct TypeAnaylzer: Analyzer {
                 else{
                     set(v, .undefined)
                 }
+            }
+        case .beginRepeatLoop(let op):
+            if op.exposesLoopCounter {
+                set(instr.innerOutput, .number)
             }
         case .createArray:
             set(instr.output,LuaType.table(ofGroup: "table", withArrayType: Dictionary(uniqueKeysWithValues: zip(0...instr.numInputs + 1, [.undefined] + instr.inputs.map({state.type(of: $0)})))))

@@ -1,0 +1,237 @@
+// Copyright 2020 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+package fuzzilli_lua.protobuf;
+
+// Parameters used by function definitions, not an operation by itself.
+message Parameters {
+    uint32 count = 1;
+    bool hasRest = 2;
+}
+
+message LoadNumber {
+    double value = 1;
+}
+
+message LoadString {
+    string value = 1;
+}
+
+message LoadBoolean {
+    bool value = 1;
+}
+
+message LoadNil {
+}
+
+message LoadPair{
+}
+
+message BeginTable {
+}
+
+message TableAddProperty {
+    string propertyName = 1;
+    bool hasValue = 2;
+}
+
+message TableAddElement {
+    int64 index = 1;
+}
+
+message BeginTableMethod {
+    string methodName = 1;
+    Parameters parameters = 2;
+}
+
+message EndTableMethod {
+}
+
+
+message EndTableLiteral {
+}
+
+message EndTable{
+
+}
+message CreateArray {
+}
+
+message LoadBuiltin {
+    string builtinName = 1;
+}
+
+message GetProperty {
+    string propertyName = 1;
+}
+
+message SetProperty {
+    string propertyName = 1;
+}
+
+message UpdateProperty {
+    string propertyName = 1;
+    BinaryOperator op = 2;
+}
+
+message DeleteProperty {
+    string propertyName = 1;
+}
+
+message GetElement {
+    int64 index = 1;
+}
+
+message SetElement {
+    int64 index = 1;
+}
+
+message UpdateElement {
+    int64 index = 1;
+    BinaryOperator op = 2;
+}
+
+message DeleteElement {
+    int64 index = 1;
+}
+
+message BeginFunction {
+    Parameters parameters = 1;
+    bool isStrict = 2;
+}
+
+message EndFunction {
+}
+
+message Return {
+}
+
+message CallFunction {
+}
+
+message CallMethod {
+    string methodName = 1;
+}
+
+enum UnaryOperator {
+    LOGICAL_NOT = 0;
+    MINUS = 1;
+    LENGTH = 2;
+}
+
+message UnaryOperation {
+    UnaryOperator op = 1;
+}
+
+enum BinaryOperator {
+    ADD = 0;
+    SUB = 1;
+    MUL = 2;
+    DIV = 3;
+    MOD = 4;
+    LOGICAL_AND = 5;
+    LOGICAL_OR = 6;
+    EXP = 7;
+    CONCAT = 8;
+    DIVISIBLE = 9;
+}
+
+message BinaryOperation {
+    BinaryOperator op = 1;
+}
+
+message Update {
+    BinaryOperator op = 1;
+}
+
+message Reassign {
+}
+
+
+enum Comparator {
+    EQUAL = 0;
+    NOT_EQUAL = 1;
+    LESS_THAN = 2;
+    LESS_THAN_OR_EQUAL = 3;
+    GREATER_THAN = 4;
+    GREATER_THAN_OR_EQUAL = 5;
+}
+
+message Compare {
+    Comparator op = 1;
+}
+
+message BeginIf {
+    bool inverted = 1;
+}
+
+message BeginElse {
+}
+
+message EndIf {
+}
+
+message BeginWhileLoopHeader {
+}
+
+message BeginWhileLoopBody {
+}
+
+message EndWhileLoop {
+}
+
+message BeginForLoopInitializer {
+}
+
+message BeginForLoopCondition {
+}
+
+message BeginForLoopAfterthought {
+}
+
+message BeginForLoopBody {
+}
+
+message EndForLoop {
+}
+
+message BeginForInLoop {
+}
+
+message EndForInLoop {
+}
+
+message BeginRepeatLoop {
+    int64 iterations = 1;
+    bool exposesLoopCounter = 2;
+}
+
+message EndRepeatLoop {
+}
+
+message LoopBreak {
+}
+
+message Label{
+    string labelname = 1;
+}
+
+message Goto{
+    string labelname = 1;
+}
+
+
+message Nop {
+}

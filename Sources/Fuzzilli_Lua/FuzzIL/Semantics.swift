@@ -29,15 +29,15 @@ extension Operation {
              // We assume that a constructor doesn't modify its arguments when called.
             return true
         case .setProperty,
-             .updateProperty:
-        //      .setElement,
-        //      .updateElement,
+             .updateProperty,
+             .setElement,
+             .updateElement,
         //      .setComputedProperty,
         //      .updateComputedProperty,
         //      .yield,
-        //      .deleteProperty,
+             .deleteProperty,
         //      .deleteComputedProperty,
-        //      .deleteElement:
+             .deleteElement:
             return inputIdx == 0
         default:
             return false
@@ -134,10 +134,10 @@ extension Operation {
     func isMatchingEnd(for beginOp: Operation) -> Bool {
         let endOp = self
         switch beginOp.opcode {
-        // case .beginObjectLiteral:
-        //     return endOp is EndObjectLiteral
-        // case .beginObjectLiteralMethod:
-        //     return endOp is EndObjectLiteralMethod
+        case .beginTable:
+            return endOp is EndTable
+        case .beginTableMethod:
+            return endOp is EndTableMethod
         // case .beginObjectLiteralComputedMethod:
         //     return endOp is EndObjectLiteralComputedMethod
         // case .beginObjectLiteralGetter:
@@ -199,21 +199,21 @@ extension Operation {
         //     return endOp is BeginDoWhileLoopHeader
         // case .beginDoWhileLoopHeader:
         //     return endOp is EndDoWhileLoop
-        // case .beginForLoopInitializer:
-        //     return endOp is BeginForLoopCondition
-        // case .beginForLoopCondition:
-        //     return endOp is BeginForLoopAfterthought
-        // case .beginForLoopAfterthought:
-        //     return endOp is BeginForLoopBody
-        // case .beginForLoopBody:
-        //     return endOp is EndForLoop
-        // case .beginForInLoop:
-        //     return endOp is EndForInLoop
+        case .beginForLoopInitializer:
+            return endOp is BeginForLoopCondition
+        case .beginForLoopCondition:
+            return endOp is BeginForLoopAfterthought
+        case .beginForLoopAfterthought:
+            return endOp is BeginForLoopBody
+        case .beginForLoopBody:
+            return endOp is EndForLoop
+        case .beginForInLoop:
+            return endOp is EndForInLoop
         // case .beginForOfLoop,
         //      .beginForOfLoopWithDestruct:
         //     return endOp is EndForOfLoop
-        // case .beginRepeatLoop:
-        //     return endOp is EndRepeatLoop
+        case .beginRepeatLoop:
+            return endOp is EndRepeatLoop
         // case .beginTry:
         //     return endOp is BeginCatch || endOp is BeginFinally
         // case .beginCatch:

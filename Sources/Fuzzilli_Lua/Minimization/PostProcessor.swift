@@ -36,42 +36,31 @@ struct MinimizationPostProcessor {
                 var addedInstruction: Instruction? = nil
                 var replacementInstruction: Instruction? = nil
                 switch instr.op.opcode {
-                case .endPlainFunction,
-                     .endArrowFunction,
-                     .endGeneratorFunction,
-                     .endAsyncFunction,
-                     .endAsyncArrowFunction,
-                     .endAsyncGeneratorFunction,
-                     .endObjectLiteralMethod,
-                     .endObjectLiteralGetter:
+                case .endFunction,
+                     .endTableMethod:
                     // Insert return statements at the end of functions, but only if there is not one already.
                     if lastInstr.op is Return || !b.hasVisibleVariables { break }
-                    addedInstruction = Instruction(Return(hasReturnValue: true), inputs: [b.randomVariable()])
-                case .callFunction:
+                    let ret = b.randomReturns()
+                    addedInstruction = Instruction(Return(numInputs: ret.count), inputs: ret)
+                case .callFunction(let op):
                     // (Sometimes) insert random arguments, but only if there are none currently.
                     if instr.hasAnyVariadicInputs || !b.hasVisibleVariables || probability(0.5) { break }
                     let args = b.randomArguments(forCalling: instr.input(0))
                     guard args.count > 0 else { break }
-                    replacementInstruction = Instruction(CallFunction(numArguments: args.count), output: instr.output, inputs: [instr.input(0)] + args)
+                    replacementInstruction = Instruction(CallFunction(numArguments: args.count, numReturns: op.numReturns), inouts: [instr.input(0)] + args + instr.outputs + instr.innerOutputs)
                 case .callMethod(let op):
                     // (Sometimes) insert random arguments, but only if there are none currently.
                     if instr.hasAnyVariadicInputs || !b.hasVisibleVariables || probability(0.5) { break }
                     let args = b.randomArguments(forCallingMethod: op.methodName, on: instr.input(0))
                     guard args.count > 0 else { break }
-                    replacementInstruction = Instruction(CallMethod(methodName: op.methodName, numArguments: args.count, isGuarded: op.isGuarded), output: instr.output, inputs: [instr.input(0)] + args)
-                case .construct:
-                    // (Sometimes) insert random arguments, but only if there are none currently.
-                    if instr.hasAnyVariadicInputs || !b.hasVisibleVariables || probability(0.5) { break }
-                    let args = b.randomArguments(forCalling: instr.input(0))
-                    guard args.count > 0 else { break }
-                    replacementInstruction = Instruction(Construct(numArguments: args.count), output: instr.output, inputs: [instr.input(0)] + args)
+                    replacementInstruction = Instruction(CallMethod(methodName: op.methodName, numArguments: args.count, numReturns: op.numReturns), inouts: [instr.input(0)] + args + instr.outputs + instr.innerOutputs)
                 case .createArray:
                     // Add initial values, but only if there are none currently.
                     if instr.hasAnyVariadicInputs || !b.hasVisibleVariables { break }
                     let initialValues = Array<Variable>(repeating: b.randomVariable(), count: Int.random(in: 1...5))
                     replacementInstruction = Instruction(CreateArray(numInitialValues: initialValues.count), output: instr.output, inputs: initialValues)
                 default:
-                    assert(!(instr.op is EndAnyFunction))
+                    assert(!(instr.op is EndFunction))
                     break
                 }
 

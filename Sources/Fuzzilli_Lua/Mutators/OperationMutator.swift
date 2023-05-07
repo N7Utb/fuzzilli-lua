@@ -85,6 +85,12 @@ public class OperationMutator: BaseInstructionMutator {
             newOp = UpdateElement(index: b.randomIndex(), operator: chooseUniform(from: BinaryOperator.allCases))
         case .deleteElement(_):
             newOp = DeleteElement(index: b.randomIndex())
+        case .tableAddProperty(let op):
+            newOp = TableAddProperty(propertyName: b.randomPropertyName(), hasValue: op.hasValue)
+        case .tableAddElement(_):
+            newOp = TableAddElement(index: b.randomIndex())
+        case .beginTableMethod(let op):
+            newOp = BeginTableMethod(methodName: b.randomMethodName(), parameters: op.parameters)
         default:
             fatalError("Unhandled Operation: \(type(of: instr.op))")
         }

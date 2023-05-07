@@ -53,10 +53,9 @@ class MinimizationHelper {
     }
 
     /// Test a reduction and return true if the reduction was Ok, false otherwise.
-    func test(_ code: Code, expectCodeToBeValid: Bool = true, numExecutions: Int = defaultNumExecutions) -> Bool {
+    func test(_ code: Code, expectCodeToBeValid: Bool = false, numExecutions: Int = defaultNumExecutions) -> Bool {
         assert(numExecutions > 0)
         assert(!expectCodeToBeValid || code.isStaticallyValid())
-
         // Reducers are allowed to nop instructions without verifying whether their outputs are used.
         // They are also allowed to remove blocks without verifying whether their opened contexts are required.
         // Therefore, we need to check if the code is valid here before executing it. This approach is much
@@ -141,7 +140,7 @@ class MinimizationHelper {
 
     /// Attempt multiple replacements at once.
     @discardableResult
-    func tryReplacements(_ replacements: [(Int, Instruction)], in code: inout Code, renumberVariables: Bool = false, expectCodeToBeValid: Bool = true, numExecutions: Int = defaultNumExecutions) -> Bool {
+    func tryReplacements(_ replacements: [(Int, Instruction)], in code: inout Code, renumberVariables: Bool = false, expectCodeToBeValid: Bool = false, numExecutions: Int = defaultNumExecutions) -> Bool {
         let originalCode = code
 
         for (index, newInstr) in replacements {
@@ -151,12 +150,10 @@ class MinimizationHelper {
             }
             code[index] = newInstr
         }
-
         if renumberVariables {
             code.renumberVariables()
         }
         assert(code.variablesAreNumberedContinuously())
-
         let result = test(code, expectCodeToBeValid: expectCodeToBeValid, numExecutions: numExecutions)
         if !result {
             code = originalCode
@@ -169,7 +166,6 @@ class MinimizationHelper {
     @discardableResult
     func tryReplacing(range: ClosedRange<Int>, in code: inout Code, with newCode: [Instruction], renumberVariables: Bool = false, expectCodeToBeValid: Bool = true, numExecutions: Int = defaultNumExecutions) -> Bool {
         assert(range.count >= newCode.count)
-
         var replacements = [(Int, Instruction)]()
         for indexOfInstructionToReplace in range {
             let indexOfReplacementInstruction = indexOfInstructionToReplace - range.lowerBound

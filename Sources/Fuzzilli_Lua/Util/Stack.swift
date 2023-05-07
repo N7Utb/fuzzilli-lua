@@ -52,6 +52,17 @@ public struct Stack<Element> {
         }
     }
 
+    public var bottom: Element{
+        get {
+            assert(!buffer.isEmpty)
+            return buffer.first!
+        }
+        set(newValue){
+            assert(!buffer.isEmpty)
+            buffer[0] = newValue
+        }
+    }
+
     public var secondToTop: Element {
         assert(buffer.count >= 2)
         return buffer[buffer.endIndex - 2]

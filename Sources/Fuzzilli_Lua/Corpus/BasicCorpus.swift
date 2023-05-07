@@ -109,7 +109,19 @@ public class BasicCorpus: ComponentBase, Collection, Corpus {
     public func allPrograms() -> [Program] {
         return Array(programs)
     }
+    
+    public func exportState() throws -> Data {
+        let res = try encodeProtobufCorpus(programs)
+        logger.info("Successfully serialized \(programs.count) programs")
+        return res
+    }
 
+    public func importState(_ buffer: Data) throws {
+        let newPrograms = try decodeProtobufCorpus(buffer)
+        programs.removeAll()
+        ages.removeAll()
+        newPrograms.forEach(addInternal)
+    }
 
     private func cleanup() {
         assert(!fuzzer.config.staticCorpus)

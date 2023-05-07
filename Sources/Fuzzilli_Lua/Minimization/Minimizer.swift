@@ -52,11 +52,12 @@ public class Minimizer: ComponentBase {
                 }
                 block(minimizedProgram)
             }
+
         }
     }
 
     /// Synchronous version of withMinimizedCopy. Should only be used for tests since it otherwise blocks the fuzzer queue.
-    func minimize(_ program: Program, withAspects aspects: ProgramAspects, limit minimizationLimit: Double = 0.0) -> Program {
+    public func minimize(_ program: Program, withAspects aspects: ProgramAspects, limit minimizationLimit: Double = 0.0) -> Program {
         let minimizedCode = internalMinimize(program, withAspects: aspects, limit: minimizationLimit, runningSynchronously: true)
         return Program(code: minimizedCode, parent: program, contributors: program.contributors)
     }
@@ -92,7 +93,6 @@ public class Minimizer: ComponentBase {
 
         let helper = MinimizationHelper(for: aspects, of: fuzzer, keeping: keptInstructions, runningOnFuzzerQueue: runningSynchronously)
         var code = program.code
-
         var iterations = 0
         repeat {
             helper.didReduce = false
@@ -101,7 +101,8 @@ public class Minimizer: ComponentBase {
             //  - The ReplaceReducer should run before the InliningReducer as it changes "special" functions into plain functions, which the inlining reducer inlines.
             //  - The ReassignmentReducer should run right after the InliningReducer as inlining produces new Reassign instructions.
             //  - The VariadicInputReducer should run after the InliningReducer as it may remove function call arguments, causing the parameters to be undefined after inlining.
-            let reducers: [Reducer] = [GenericInstructionReducer(), BlockReducer(), SimplifyingReducer(), LoopReducer(), InliningReducer(), ReassignmentReducer(), VariadicInputReducer(), DeduplicatingReducer()]
+            let reducers: [Reducer] = [GenericInstructionReducer(), BlockReducer(), LoopReducer(), InliningReducer(), ReassignmentReducer(), VariadicInputReducer(), DeduplicatingReducer()]
+            // let reducers: [Reducer] = [InliningReducer()]
             for reducer in reducers {
                 reducer.reduce(&code, with: helper)
                 assert(code.isStaticallyValid())
@@ -116,15 +117,15 @@ public class Minimizer: ComponentBase {
 
         // Most reducers replace instructions with NOPs instead of deleting them. Remove those NOPs now.
         code.removeNops()
-
         // Post-process the sample after minimization. This step adds certain features back to the program that may have been minimized away but are typically helpful for future mutations.
         // Currently we run this regardless of whether we're processing a crash or an interesting sample. If we wanted to, we could only run this for interesting samples (that will be mutated again), but its fine to also run it for crashes.
         // Adding instructions will invalidate the keptInstructions array. Since we're not removing any more instructions, clear that array now.
         helper.clearInstructionsToKeep()
         let postProcessor = MinimizationPostProcessor()
         postProcessor.process(&code, with: helper)
+        
         assert(code.isStaticallyValid())
-
+        
         return code
     }
 }

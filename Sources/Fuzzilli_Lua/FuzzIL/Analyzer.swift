@@ -181,3 +181,97 @@ struct DeadCodeAnalyzer: Analyzer {
     }
 }
 
+
+/// Keeps track of the current context during program construction.
+struct ScopeAnalyzer: Analyzer {
+
+    private var subroutine_stack = Stack<Subroutine>()
+    private var r_stack = Stack<[String]>()
+    private var t_stack = Stack<Int>()
+    private var table_count = 0
+
+    /// Visible variables management.
+    /// The `scopes` stack contains one entry per currently open scope containing all local variables created in that scope.
+    private var scopes = Stack<[Variable]>([[]])
+    /// The `variablesInScope` array simply contains all variables that are currently in scope. It is effectively the `scopes` stack flattened.
+    private var variablesInScope: [Variable] {
+        scopes.buffer.flatMap({$0})
+    }
+
+
+    private var global_map = [Subroutine:[Variable]]()
+    enum Subroutine: Hashable{
+        case function(Variable)
+        case tmp_method(String, Int)
+        case method(String, Variable)
+    }
+    private var label_stack = Stack<[String]>([[]])
+    mutating func analyze(_ instr: Instruction) {
+        // Scope management (1).
+        if instr.isBlockEnd {
+            assert(scopes.count > 0, "Trying to close a scope that was never opened")
+            scopes.pop()
+            label_stack.pop()
+        }
+
+        var outputs = instr.outputs
+        switch instr.op.opcode{
+        case .callFunction:
+            outputs += global_map[.function(instr.input(0))] ?? []
+        case .callMethod(let op):
+            outputs += global_map[.method(op.methodName,instr.input(0))] ?? []
+        default:
+            break
+        }
+
+        if !subroutine_stack.isEmpty {
+            scopes.top.append(contentsOf: outputs)
+            outputs.forEach({
+                if !$0.isLocal() { global_map[subroutine_stack.top]?.append($0)}
+            })
+        } else {
+            scopes.bottom.append(contentsOf: outputs.filter({!$0.isLocal()}))
+            scopes.top.append(contentsOf: outputs.filter({$0.isLocal()}))
+        }
+
+        switch instr.op.opcode {
+        case .beginFunction:
+            subroutine_stack.push(.function(instr.output))
+            global_map[.function(instr.output)] = []
+        case .endFunction:
+            let _ = subroutine_stack.pop()
+        case .beginTable:
+            r_stack.push([])
+            t_stack.push(table_count)
+            table_count += 1
+        case .endTable:
+            let r = r_stack.pop()
+            let t = t_stack.pop()
+            for subroutine in r{
+                global_map[.method(subroutine, instr.output)] = global_map[.tmp_method(subroutine,t)]
+                global_map.removeValue(forKey: .tmp_method(subroutine, t))
+            }
+        case .beginTableMethod(let op):
+            subroutine_stack.push(.tmp_method(op.methodName, t_stack.top))
+            global_map[.tmp_method(op.methodName, t_stack.top)] = []
+        case .endTableMethod:
+            switch subroutine_stack.pop() {
+            case .tmp_method(let s,_):
+                r_stack.top.append(s)
+            default:
+                fatalError("miss match on beginTableMethod and endTableMethod")
+            }
+        case .label(let op):
+            label_stack.top.append(op.value)
+        default:
+            break
+        }
+        // Scope management (2). Happens here since e.g. function definitions create a variable in the outer scope.
+        if instr.isBlockStart {
+            scopes.push([])
+            label_stack.push([])
+        }
+
+        scopes.top.append(contentsOf: instr.innerOutputs)
+    }
+}

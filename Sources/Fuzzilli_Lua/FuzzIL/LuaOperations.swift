@@ -207,6 +207,12 @@ final class LoadPair: Operation {
     }
 }
 
+// final class SetMetaTable: Operation{
+//     override var opcode: Opcode {.setMetaTable(self) }
+//     init() {
+//         super.init(numInputs: 2)
+//     }
+// }
 
 final class CallMethod: Operation {
     override var opcode: Opcode { .callMethod(self) }
@@ -612,6 +618,35 @@ final class EndForInLoop: Operation {
     }
 }
 
+// A loop that simply runs N times and is therefore always guaranteed to terminate.
+// Useful for example to force JIT compilation without creating more complex loops, which can often quickly end up turning into infinite loops due to mutations.
+// These could be lifted simply as `for (let i = 0; i < N; i++) { body() }`
+final class BeginRepeatLoop: Operation {
+    override var opcode: Opcode { .beginRepeatLoop(self) }
+
+    let iterations: Int
+
+    // Whether the current iteration number is exposed as an inner output variable.
+    var exposesLoopCounter: Bool {
+        assert(numInnerOutputs == 0 || numInnerOutputs == 1)
+        return numInnerOutputs == 1
+    }
+
+    init(iterations: Int, exposesLoopCounter: Bool = true) {
+        self.iterations = iterations
+        super.init(numInnerOutputs: exposesLoopCounter ? 1 : 0, attributes: [.isBlockStart, .propagatesSurroundingContext], contextOpened: [.script, .loop])
+    }
+}
+
+final class EndRepeatLoop: Operation {
+    override var opcode: Opcode { .endRepeatLoop(self) }
+
+    init() {
+        super.init(attributes: .isBlockEnd)
+    }
+}
+
+
 final class LoopBreak: Operation {
     override var opcode: Opcode { .loopBreak(self) }
 
@@ -645,3 +680,16 @@ class LuaInternalOperation: Operation {
         super.init(numInputs: numInputs, attributes: [.isInternal])
     }
 }
+
+/// Turn the input value into a probe that records the actions performed on it.
+/// Used by the ProbingMutator.
+// final class Probe: LuaInternalOperation {
+//     override var opcode: Opcode { .probe(self) }
+
+//     let id: String
+
+//     init(id: String) {
+//         self.id = id
+//         super.init(numInputs: 1)
+//     }
+// }

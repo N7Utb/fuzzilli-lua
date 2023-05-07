@@ -49,6 +49,7 @@ public class BaseInstructionMutator: Mutator {
                 }
             }
         }
+        if !b.check() {return nil}
 
         return b.finalize()
     }

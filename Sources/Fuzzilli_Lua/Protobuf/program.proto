@@ -1,0 +1,90 @@
+// Copyright 2020 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+package fuzzilli_lua.protobuf;
+
+import "operations.proto";
+
+message Instruction {
+    // The operation is either encoded as an index, referring to the nth operation
+    // (so that shared operations are also only present once in the protobuf), or
+    // as one of the many concrete Operation messages.
+    repeated uint32 inouts = 1;
+    uint32 numinputs = 52;
+    uint32 numoutputs = 53;
+    uint32 numinneroutputs = 54;
+    oneof operation {
+        uint32 opIdx = 2;
+        // TODO fixup keys
+        LoadNumber loadNumber = 3;
+        LoadString loadString = 4;
+        LoadBoolean loadBoolean = 5;
+        LoadNil loadNil = 6;
+        LoadPair loadPair = 7;
+        BeginTable beginTable = 8;
+        TableAddProperty tableAddProperty = 9;
+        TableAddElement tableAddElement = 10;
+        BeginTableMethod beginTableMethod = 11;
+        EndTableMethod endTableMethod = 12;
+        EndTable endTable = 13;
+        CreateArray createArray = 14;
+        LoadBuiltin loadBuiltin = 15;
+        GetProperty getProperty = 16;
+        SetProperty setProperty = 17;
+        UpdateProperty updateProperty = 18;
+        DeleteProperty deleteProperty = 19;
+        GetElement GetElement = 20;
+        SetElement setElement = 21;
+        UpdateElement updateElement = 22;
+        DeleteElement deleteElement = 23;
+        BeginFunction beginFunction = 24;
+        EndFunction endFunction = 25;
+        Return return = 26;
+        CallFunction callFunction = 27;
+        CallMethod callMethod = 28;
+        UnaryOperation unaryOperation = 29;
+        BinaryOperation binaryOperation = 30;
+        Update update = 31;
+        Reassign reassign = 32;
+        Compare compare = 33;
+        BeginIf beginIf = 34;
+        BeginElse beginElse = 35;
+        EndIf endIf = 36;
+        BeginWhileLoopHeader beginWhileLoopHeader = 37;
+        BeginWhileLoopBody beginWhileLoopBody = 38;
+        EndWhileLoop endWhileLoop = 39;
+        BeginForLoopInitializer beginForLoopInitializer = 40;
+        BeginForLoopCondition beginForLoopCondition = 41;
+        BeginForLoopAfterthought beginForLoopAfterthought = 42;
+        BeginForLoopBody beginForLoopBody = 43;
+        EndForLoop endForLoop = 44;
+        BeginForInLoop beginForInLoop = 45;
+        EndForInLoop endForInLoop = 46;
+        BeginRepeatLoop beginRepeatLoop = 47;
+        EndRepeatLoop endRepeatLoop = 48;
+        LoopBreak loopBreak = 49;
+        Label label = 50;
+        Goto goto = 51;
+        Nop nop = 64;
+
+    }
+}
+
+message Program {
+    bytes uuid = 1;
+    repeated Instruction code = 2;
+    map<sint32, string> comments = 3;
+    Program parent = 4;
+}

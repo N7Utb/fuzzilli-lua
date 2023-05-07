@@ -65,7 +65,6 @@ public class MutationEngine: ComponentBase, FuzzEngine {
                     mutator = fuzzer.mutators.randomElement()
                 }
             }
-
             guard let program = mutatedProgram else {
                 logger.warning("Could not mutate sample, giving up. Sample:\n")
                 continue

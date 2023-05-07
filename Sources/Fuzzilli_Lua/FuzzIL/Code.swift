@@ -164,6 +164,7 @@ public struct Code: Collection {
         var numVariables = 0
         var varMap = VariableMap<Variable>()
         for (idx, instr) in self.enumerated() {
+            
             for output in instr.allOutputs {
                 assert(!varMap.contains(output))
                 let mappedVar = Variable(number: numVariables)
@@ -200,6 +201,143 @@ public struct Code: Collection {
 
     /// Checks if this code is statically valid, i.e. can be used as a Program.
     public func check() throws {
+
+        var contextAnalyzer = ContextAnalyzer()
+        var blockHeads = [Operation]()
+        var forLoopHeaderStack = Stack<Int>()       // Contains the number of loop variables, which must be the same for every block in the for-loop's header.
+
+        enum Subroutine: Hashable{
+            case function(Variable)
+            case tmp_method(String, Int)
+            case method(String, Variable)
+        }
+        var subroutine_stack = Stack<Subroutine>()
+        var global_map = [Subroutine:[Variable]]()
+        var scopes = Stack<[Variable]>([[]])
+        var variablesInScope: [Variable] {
+            scopes.buffer.flatMap({$0})
+        }
+        var r_stack = Stack<[String]>()
+        var t_stack = Stack<Int>()
+        var table_count = 0
+
+        for (idx, instr) in instructions.enumerated() {
+            // print("\(instr.op), \(instr.outputs), \(instr.innerOutputs), \(instr.inputs)")
+            // print("before \(scopes)")
+            guard idx == instr.index else {
+                throw FuzzilliError.codeVerificationError("instruction \(idx) has wrong index \(String(describing: instr.index))")
+            }
+
+            // Ensure all input variables are valid and have been defined
+            for input in instr.inputs {
+                guard variablesInScope.contains(input) else {
+                    throw FuzzilliError.codeVerificationError("variable \(input) was never defined or not visible")
+                }
+            }
+
+            guard instr.op.requiredContext.isSubset(of: contextAnalyzer.context) else {
+                throw FuzzilliError.codeVerificationError("operation \(instr.op.name) inside an invalid context")
+            }
+
+            // Ensure that the instruction exists in the right context
+            contextAnalyzer.analyze(instr)
+
+            // Block and scope management (1)
+            if instr.isBlockEnd {
+                guard let blockBegin = blockHeads.popLast() else {
+                    throw FuzzilliError.codeVerificationError("block was never started")
+                }
+                guard instr.op.isMatchingEnd(for: blockBegin) else {
+                    throw FuzzilliError.codeVerificationError("block end does not match block start")
+                }
+                guard scopes.count > 0 else{
+                    throw FuzzilliError.codeVerificationError("Trying to close a scope that was never opened")
+                }
+                scopes.pop()
+
+            }
+
+            var outputs = instr.outputs
+            switch instr.op.opcode{
+            case .callFunction:
+                outputs += global_map[.function(instr.input(0))] ?? []
+            case .callMethod(let op):
+                outputs += global_map[.method(op.methodName,instr.input(0))] ?? []
+            default:
+                break
+            }
+            if !(instr.op is Nop){
+                if !subroutine_stack.isEmpty {
+                    scopes.top.append(contentsOf: outputs)
+                    outputs.forEach({
+                        if !$0.isLocal() { global_map[subroutine_stack.top]?.append($0)}
+                    })
+                } else {
+                    scopes.bottom.append(contentsOf: outputs.filter({!$0.isLocal()}))
+                    scopes.top.append(contentsOf: outputs.filter({$0.isLocal()}))
+                }
+            }
+
+            switch instr.op.opcode {
+            case .beginFunction:
+                subroutine_stack.push(.function(instr.output))
+                global_map[.function(instr.output)] = []
+            case .endFunction:
+                let _ = subroutine_stack.pop()
+            case .beginTable:
+                r_stack.push([])
+                t_stack.push(table_count)
+                table_count += 1
+            case .endTable:
+                let r = r_stack.pop()
+                let t = t_stack.pop()
+                for subroutine in r{
+                    global_map[.method(subroutine, instr.output)] = global_map[.tmp_method(subroutine,t)]
+                    global_map.removeValue(forKey: .tmp_method(subroutine, t))
+                }
+            case .beginTableMethod(let op):
+                subroutine_stack.push(.tmp_method(op.methodName, t_stack.top))
+                global_map[.tmp_method(op.methodName, t_stack.top)] = []
+            case .endTableMethod:
+                switch subroutine_stack.pop() {
+                case .tmp_method(let s,_):
+                    r_stack.top.append(s)
+                default:
+                    fatalError("miss match on beginTableMethod and endTableMethod")
+                }
+            default:
+                break
+            }
+
+            // Block and scope management (2)
+            if instr.isBlockStart {
+                scopes.push([])
+                
+                blockHeads.append(instr.op)
+
+                // Ensure that all blocks in a for-loop's header have the same number of loop variables.
+                if instr.op is BeginForLoopCondition {
+                    guard instr.numInputs == instr.numInnerOutputs else {
+                        throw FuzzilliError.codeVerificationError("for-loop header is inconsistent")
+                    }
+                    forLoopHeaderStack.push(instr.numInnerOutputs)
+                } else if instr.op is BeginForLoopAfterthought {
+                    guard instr.numInnerOutputs == forLoopHeaderStack.top else {
+                        throw FuzzilliError.codeVerificationError("for-loop header is inconsistent")
+                    }
+                } else if instr.op is BeginForLoopBody {
+                    guard instr.numInnerOutputs == forLoopHeaderStack.pop() else {
+                        throw FuzzilliError.codeVerificationError("for-loop header is inconsistent")
+                    }
+                }
+            }
+
+            // Ensure inner output variables don't exist yet
+            scopes.top.append(contentsOf: instr.innerOutputs)
+
+            // print("after \(scopes)")
+
+        }
 
     }
 

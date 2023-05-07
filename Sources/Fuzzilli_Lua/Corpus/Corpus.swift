@@ -39,6 +39,8 @@ public protocol Corpus : ComponentBase {
     /// We could also consider making Corpus a Collection instead, but this seems easier for now.
     func allPrograms() -> [Program]
 
+    func exportState() throws -> Data
+    func importState(_ buffer: Data) throws
 }
 
 extension Corpus {

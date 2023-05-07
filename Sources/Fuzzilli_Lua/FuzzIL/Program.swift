@@ -50,5 +50,60 @@ public final class Program {
         parent = nil
     }
 
+}
 
+extension Program: ProtobufConvertible {
+    public typealias ProtobufType = FuzzilliLua_Protobuf_Program
+
+    func asProtobuf(opCache: OperationCache? = nil) -> ProtobufType {
+        return ProtobufType.with {
+            $0.uuid = id.uuidData
+            $0.code = code.map({ $0.asProtobuf(with: opCache) })
+
+            if !comments.isEmpty {
+                $0.comments = comments.asProtobuf()
+            }
+
+            if let parent = parent {
+                $0.parent = parent.asProtobuf(opCache: opCache)
+            }
+        }
+    }
+
+    public func asProtobuf() -> ProtobufType {
+        return asProtobuf(opCache: nil)
+    }
+
+    convenience init(from proto: ProtobufType, opCache: OperationCache? = nil) throws {
+        var code = Code()
+        for (i, protoInstr) in proto.code.enumerated() {
+            do {
+                code.append(try Instruction(from: protoInstr, with: opCache))
+            } catch FuzzilliError.instructionDecodingError(let reason) {
+                throw FuzzilliError.programDecodingError("could not decode instruction #\(i): \(reason)")
+            }
+        }
+
+        do {
+            try code.check()
+        } catch FuzzilliError.codeVerificationError(let reason) {
+            throw FuzzilliError.programDecodingError("decoded code is not statically valid: \(reason)")
+        }
+
+        self.init(code: code)
+
+        if let uuid = UUID(uuidData: proto.uuid) {
+            self.id = uuid
+        }
+
+        self.comments = ProgramComments(from: proto.comments)
+
+        if proto.hasParent {
+            self.parent = try Program(from: proto.parent, opCache: opCache)
+        }
+    }
+
+    public convenience init(from proto: ProtobufType) throws {
+        try self.init(from: proto, opCache: nil)
+    }
 }
