@@ -88,6 +88,9 @@ public class ProgramCoverageEvaluator: ComponentBase, ProgramEvaluator {
         return Double(context.found_edges) / Double(context.num_edges)
     }
 
+    public var found_edges: UInt64{
+        return UInt64(context.found_edges)
+    }
     /// Context for the C library.
     private var context = libcoverage.cov_context()
 

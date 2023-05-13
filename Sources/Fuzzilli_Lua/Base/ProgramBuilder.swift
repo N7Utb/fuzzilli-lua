@@ -155,6 +155,11 @@ public class ProgramBuilder {
         return program
     }
 
+    /// Prints the current program as FuzzIL code to stdout. Useful for debugging.
+    public func dumpCurrentProgram() {
+        print(FuzzILLifter().lift(code))
+    }
+    
     /// Returns the current number of instructions of the program we're building.
     public var currentNumberOfInstructions: Int {
         return code.count

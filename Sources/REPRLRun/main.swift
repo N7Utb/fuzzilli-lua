@@ -63,6 +63,7 @@ func runREPRLTests() {
     }
 
     func expect_failure(_ code: String) {
+        print(execute(code).status)
         if execute(code).status == 0 {
             print("Execution of \"\(code)\" unexpectedly succeeded")
             numFailures += 1

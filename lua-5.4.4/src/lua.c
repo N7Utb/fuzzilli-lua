@@ -739,6 +739,13 @@ static void doREPL(lua_State *L)
 }
 
 /* }================================================================== */
+int test_crash(lua_State* L){
+  char shell_code[5] = "1123";
+  char* of = "asdhofhuisfhdgkjsdhgjkbnc12834728974398273498237498237498kaljsdklajsdlkjasdiaojsdiaj237489";
+  strcpy(shell_code - 10, of);
+  printf("%s\n",shell_code);
+  return 0;
+}
 
 static int do_Fuzzing(int argc, char **argv)
 {
@@ -789,6 +796,7 @@ static int do_Fuzzing(int argc, char **argv)
       l_message(argv[0], "cannot create state: not enough memory");
       return EXIT_FAILURE;
     }
+    lua_register(L,"test_crash", test_crash);
     luaL_openlibs(L);                      /* open standard libraries */
     createargtable(L, argv, argc, script); /* create table 'arg' */
     lua_gc(L, LUA_GCGEN, 0, 0);            /* GC in generational mode */
@@ -804,7 +812,7 @@ static int do_Fuzzing(int argc, char **argv)
     { /* execute hte test case failure */
       report(L, status);
     }
-
+  
     lua_close(L);
     status = (result & 0xff) << 8;
     fflush(stdout);
@@ -832,7 +840,6 @@ static int pmain(lua_State *L)
     print_usage(argv[script]); /* 'script' has index of bad arg. */
     return 0;
   }
-
 
   if (args & has_v) /* option '-v'? */
     print_version();
@@ -950,19 +957,19 @@ int test(int argc, char **argv)
   return 0;
 }
 
+
 int main(int argc, char **argv)
 {
   int status, result;
   int script;
   int args = collectargs(argv, &script);
-
   if (args & has_r) /* option '-r' */
   {
     return do_Fuzzing(argc, argv);
     // return test(argc,argv);
   }
-
   lua_State *L = luaL_newstate(); /* create state */
+  lua_register(L,"test_crash", test_crash);
   if (L == NULL)
   {
     l_message(argv[0], "cannot create state: not enough memory");

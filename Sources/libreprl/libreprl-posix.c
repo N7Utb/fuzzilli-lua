@@ -435,7 +435,15 @@ int reprl_execute(struct reprl_context* ctx, const char* script, uint64_t script
         reprl_child_terminated(ctx);
 
         if (WIFEXITED(status)) {
-            status = WEXITSTATUS(status) << 8;
+            status = WEXITSTATUS(status);
+            if(status == 1){
+                /// TODO: may be improper
+                /// SIGV
+                status = status;
+            }
+            else{
+                status = status << 8;
+            }
         } else if (WIFSIGNALED(status)) {
             status = WTERMSIG(status);
         } else {

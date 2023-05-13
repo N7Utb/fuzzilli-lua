@@ -73,6 +73,8 @@ message Statistics {
         /// The percentage of edges covered if doing coverage-guided fuzzing.
         double coverage = 14;
 
+        uint64 found_edges = 17;
+        
         /// The correctness rate of recently generated programs (number of valid programs divided by number of generated programs).
         double correctnessRate = 15;
 

@@ -2,6 +2,7 @@ Package.resolved
 .DS_Store
 /.build
 /Packages
+/out
 /*.xcodeproj
 .vscode
 .*.sw?

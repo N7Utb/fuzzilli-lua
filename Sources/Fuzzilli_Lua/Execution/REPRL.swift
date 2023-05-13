@@ -124,7 +124,6 @@ public class REPRL: ComponentBase, ScriptRunner {
                 status = reprl_execute(reprlContext, $0, UInt64(script.count), UInt64(timeout), &execTime, 1)
             }
         }
-
         if status < 0 {
             logger.error("Script execution failed again: \(String(cString: reprl_get_last_error(reprlContext))). Giving up")
             // If we weren't able to successfully execute a script in the last N attempts, abort now...

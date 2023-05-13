@@ -41,7 +41,6 @@ public class Storage: Module {
         self.statisticsDir = storageDir + "/stats"
         self.stateFile = storageDir + "/state.bin"
         self.diagnosticsDir = storageDir + "/diagnostics"
-
         self.statisticsExportInterval = statisticsExportInterval
 
         self.fuzzer = fuzzer

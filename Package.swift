@@ -39,21 +39,21 @@ let package = Package(
                 cSettings: [.unsafeFlags(["-O3"])],     // Using '-c release' when building uses '-O2', so '-O3' provides a performance gain
                 linkerSettings: [.linkedLibrary("rt", .when(platforms: [.linux]))]),
 
-        .target(name: "Fuzzilli",
-                dependencies: [
-                    .product(name: "SwiftProtobuf", package: "swift-protobuf"),
-                    "libsocket",
-                    "libreprl",
-                    "libcoverage"],
-                exclude: [
-                    "Protobuf/sync.proto",
-                    "Protobuf/operations.proto",
-                    "Protobuf/program.proto",
-                    "Protobuf/README.md"],
-                resources: [
-                    // The ast.proto file is required by the node.js parser
-                    .copy("Protobuf/ast.proto"),
-                    .copy("Compiler/Parser")]),
+        // .target(name: "Fuzzilli",
+        //         dependencies: [
+        //             .product(name: "SwiftProtobuf", package: "swift-protobuf"),
+        //             "libsocket",
+        //             "libreprl",
+        //             "libcoverage"],
+        //         exclude: [
+        //             "Protobuf/sync.proto",
+        //             "Protobuf/operations.proto",
+        //             "Protobuf/program.proto",
+        //             "Protobuf/README.md"],
+        //         resources: [
+        //             // The ast.proto file is required by the node.js parser
+        //             .copy("Protobuf/ast.proto"),
+        //             .copy("Compiler/Parser")]),
 
         .target(name:"Fuzzilli_Lua",
                 dependencies: [
@@ -73,8 +73,8 @@ let package = Package(
 
         .target(name: "FuzzilliCli_Lua",
                 dependencies: ["Fuzzilli_Lua"]),
-        .target(name: "FuzzilliCli",
-                dependencies: ["Fuzzilli"]),
+        // .target(name: "FuzzilliCli",
+        //         dependencies: ["Fuzzilli"]),
         // .target(name: "FuzzILTool",
         //         dependencies: ["Fuzzilli"]),
 

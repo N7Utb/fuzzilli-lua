@@ -1,6 +1,13 @@
 import Foundation
 import Fuzzilli_Lua
 
+// Helper function that prints out an error message, then exits the process.
+func configError(_ msg: String) -> Never {
+    print(msg)
+    exit(-1)
+}
+
+
 //
 // Process commandline arguments.
 //
@@ -9,6 +16,12 @@ let swarmTesting = args.has("--swarmTesting")
 let consecutiveMutations = args.int(for: "--consecutiveMutations") ?? 5
 let numJobs = args.int(for: "--jobs") ?? 1
 let DebugTest = args.has("--debug")
+let storagePath = args["--storagePath"]
+var resume = args.has("--resume")
+let overwrite = args.has("--overwrite")
+let exportStatistics = args.has("--exportStatistics")
+let statisticsExportInterval = args.uint(for: "--statisticsExportInterval") ?? 10
+
 var exitCondition = Fuzzer.ExitCondition.none
 
 // Initialize the logger such that we can print to the screen.
@@ -22,6 +35,33 @@ let profile = LuaProfile
 if swarmTesting {
     logger.info("Choosing the following weights for Swarm Testing mode.")
     logger.info("Weight | CodeGenerator")
+}
+
+if (resume || overwrite) && storagePath == nil {
+    configError("--resume and --overwrite require --storagePath")
+}
+
+if let path = storagePath {
+    let directory = (try? FileManager.default.contentsOfDirectory(atPath: path)) ?? []
+    if !directory.isEmpty && !resume && !overwrite {
+        configError("Storage path \(path) exists and is not empty. Please specify either --resume or --overwrite or delete the directory manually")
+    }
+}
+
+if resume && overwrite {
+    configError("Must only specify one of --resume and --overwrite")
+}
+
+if exportStatistics && storagePath == nil {
+    configError("--exportStatistics requires --storagePath")
+}
+
+if statisticsExportInterval <= 0 {
+    configError("statisticsExportInterval needs to be > 0")
+}
+
+if args.has("--statisticsExportInterval") && !exportStatistics  {
+    configError("statisticsExportInterval requires --exportStatistics")
 }
 
 let regularCodeGenerators: [(CodeGenerator, Int)] = CodeGenerators.map {
@@ -47,7 +87,31 @@ for (generator, var weight) in (additionalCodeGenerators + regularCodeGenerators
     codeGenerators.append(generator, withWeight: weight)
 }
 
+func loadCorpus(from dirPath: String) -> [Program] {
+    var isDir: ObjCBool = false
+    guard FileManager.default.fileExists(atPath: dirPath, isDirectory: &isDir) && isDir.boolValue else {
+        logger.fatal("Cannot import programs from \(dirPath), it is not a directory!")
+    }
 
+    var programs = [Program]()
+    let fileEnumerator = FileManager.default.enumerator(atPath: dirPath)
+    while let filename = fileEnumerator?.nextObject() as? String {
+        guard filename.hasSuffix(".fzil") else { continue }
+        let path = dirPath + "/" + filename
+        do {
+            let data = try Data(contentsOf: URL(fileURLWithPath: path))
+            let pb = try FuzzilliLua_Protobuf_Program(serializedData: data)
+            let program = try Program.init(from: pb)
+            if !program.isEmpty {
+                programs.append(program)
+            }
+        } catch {
+            logger.error("Failed to load program \(path): \(error). Skipping")
+        }
+    }
+
+    return programs
+}
 
 func makeFuzzer(with configuration: Configuration) -> Fuzzer
 {
@@ -101,7 +165,9 @@ func unitTest(with fuzzer: Fuzzer){
 
     // Initialize the fuzzer, and run startup tests
     fuzzer.initialize()
-    let b = fuzzer.makeBuilder()
+    // let b = fuzzer.makeBuilder()
+    let exec = fuzzer.runner.run("while 1 do end", withTimeout: 1000)
+    print(exec.outcome)
     
     // b.buildForLoop {
     //     b.loadNumber(2)
@@ -122,7 +188,8 @@ func unitTest(with fuzzer: Fuzzer){
 
     // }
 
-    
+    // let v1 = b.loadBoolean(true)
+    // let n = b.loadNil()
     // let f1 = b.buildFunction(with: .parameters(n: 0)) { _ in
     //     b.loadString("ccc")
     // }
@@ -158,15 +225,15 @@ func unitTest(with fuzzer: Fuzzer){
 
     // }
     // print(b.type(of: s))
-    let loopVar = b.loadNumber(0)
-    let c1 = b.compare(loopVar, with: b.loadNumber(Float64.random(in: 1...10)), using: .lessThan) 
-    var c2: Variable = b.loadNumber(0)
-    b.buildWhileLoop({ 
-        c2 = b.compare(loopVar, with: b.loadNumber(Float64.random(in: 1...10)), using: .lessThan) 
-        return c1}, {
-            b.loadNumber(0)
-            b.compare(c2, with: b.loadNumber(Float64.random(in: 1...10)), using: .lessThan) 
-        })
+    // let loopVar = b.loadNumber(0)
+    // let c1 = b.compare(loopVar, with: b.loadNumber(Float64.random(in: 1...10)), using: .lessThan) 
+    // var c2: Variable = b.loadNumber(0)
+    // b.buildWhileLoop({ 
+    //     c2 = b.compare(loopVar, with: b.loadNumber(Float64.random(in: 1...10)), using: .lessThan) 
+    //     return c1}, {
+    //         b.loadNumber(0)
+    //         b.compare(c2, with: b.loadNumber(Float64.random(in: 1...10)), using: .lessThan) 
+    // })
     
     // b.run(CodeGenerators.get("PropertyAssignmentGenerator"))
     // b.run(CodeGenerators.get("PropertyUpdateGenerator"))
@@ -194,15 +261,18 @@ func unitTest(with fuzzer: Fuzzer){
     //     }
     // }
     // b.buildLabel(label)
-    let p1 = b.finalize()
-    
+    // print(b.dumpCurrentProgram())
+    // let p1 = b.finalize()
+    // print(fuzzer.lifter.lift(p1))
+
     // let execution = fuzzer.execute(p1)
     // let aspects = fuzzer.evaluator.evaluate(execution)
-    // let _ = fuzzer.minimizer.minimize(p1, withAspects: aspects!)
+    // let p2 = fuzzer.minimizer.minimize(p1, withAspects: aspects!)
     // let mutator = InputMutator(isTypeAware: true)
     // let p2 = mutator.mutate(p1, for: fuzzer)
     // print(fuzzer.lifter.lift(p2!))
-    print(fuzzer.lifter.lift(p1))
+    
+    // print(fuzzer.lifter.lift(p2))
 
     
 }
@@ -225,6 +295,32 @@ fuzzer.sync{
     // Always want some statistics.
     fuzzer.addModule(Statistics())
 
+    // Store samples to disk if requested.
+    if let path = storagePath {
+        if resume {
+            // Move the old corpus to a new directory from which the files will be imported afterwards
+            // before the directory is deleted.
+            do {
+                try FileManager.default.moveItem(atPath: path + "/corpus", toPath: path + "/old_corpus")
+            } catch {
+                logger.info("Nothing to resume from: \(path)/corpus does not exist")
+                resume = false
+            }
+        } else if overwrite {
+            logger.info("Deleting all files in \(path) due to --overwrite")
+            try? FileManager.default.removeItem(atPath: path)
+        } else {
+            // The corpus directory must be empty. We already checked this above, so just assert here
+            let directory = (try? FileManager.default.contentsOfDirectory(atPath: path + "/corpus")) ?? []
+            assert(directory.isEmpty)
+        }
+
+        fuzzer.addModule(Storage(for: fuzzer,
+                                 storageDir: path,
+                                 statisticsExportInterval: exportStatistics ? Double(statisticsExportInterval) * Minutes : nil
+        ))
+    }
+
     // Synchronize with thread workers if requested.
     if numJobs > 1 {
         fuzzer.addModule(ThreadParent(for: fuzzer))
@@ -233,6 +329,20 @@ fuzzer.sync{
     // Exit this process when the main fuzzer stops.
     fuzzer.registerEventListener(for: fuzzer.events.ShutdownComplete) { reason in
         exit(reason.toExitCode())
+    }
+
+    // Resume a previous fuzzing session ...
+    if resume, let path = storagePath {
+        var corpus = loadCorpus(from: path + "/old_corpus")
+        logger.info("Scheduling import of \(corpus.count) programs from previous fuzzing run.")
+
+        // Reverse the order of the programs, so that older programs are imported first.
+        corpus.reverse()
+
+        // Delete the old corpus directory now
+        try? FileManager.default.removeItem(atPath: path + "/old_corpus")
+
+        fuzzer.scheduleCorpusImport(corpus, importMode: .interestingOnly(shouldMinimize: false))  // We assume that the programs are already minimized
     }
 
     // Initialize the fuzzer, and run startup tests
