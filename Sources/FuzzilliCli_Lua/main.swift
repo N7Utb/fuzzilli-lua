@@ -27,7 +27,14 @@ var exitCondition = Fuzzer.ExitCondition.none
 // Initialize the logger such that we can print to the screen.
 let logger = Logger(withLabel: "Cli")
 
-let lua_path = "./lua-5.4.4/src/lua"
+// let lua_path = "./lua-5.4.4/src/lua"
+
+let lua_path = args[0]
+
+if !FileManager.default.fileExists(atPath: lua_path) {
+    configError("Invalid Lua shell path \"\(lua_path)\", file does not exist")
+}
+
 let profile = LuaProfile
 ///
 /// Chose the code generator weights.
@@ -167,115 +174,62 @@ func unitTest(with fuzzer: Fuzzer){
     fuzzer.initialize()
     // let b = fuzzer.makeBuilder()
     let exec = fuzzer.runner.run("while 1 do end", withTimeout: 1000)
-    print(exec.outcome)
-    
-    // b.buildForLoop {
-    //     b.loadNumber(2)
-    // }
-    // String.random(ofLength: 1, withCharSet: .l)
-    
-    // String.randomElement(CharacterSet.letters)
-    
-    // b.buildLabel(b.nextLabel())
-    // let v1 = b.loadNumber(123)
-    // let _ = b.loadString("abc")
-    // // let s = b.loadBuiltin("math")
-    // b.buildRepeatLoop(n: 10){
-    //     b.loadString("abc")
-    // }
-    // b.buildRepeatLoop(n: 10){ v in
-    //     b.loadString("abc")
-
-    // }
-
-    // let v1 = b.loadBoolean(true)
-    // let n = b.loadNil()
-    // let f1 = b.buildFunction(with: .parameters(n: 0)) { _ in
-    //     b.loadString("ccc")
-    // }
-    // let t1 = b.buildTable({ td in
-    //     td.addMethod("a", with: .parameters(n: 0)){ v in
-    //         b.loadString("ddd")
-    //         b.loadNumber(2)
-    //         let f2 = b.buildFunction(with: .parameters(n: 0)) { _ in
-    //             b.loadString("ccc")
-    //         }
-    //         b.callFunction(f2)
-    //     }
-    // })
-    // b.callFunction(f1)
-    // b.callMethod("a", on: t1)
-
-
-    // b.loadNumber(4)
-    // let v1 = b.loadNumber(5)
-    // let v2 = b.loadString("ccc")
-    // b.buildPrefix()
-    // b.run(CodeGenerators.get("TableGenerator"))
-    // b.loadString("ddd")
-    // let methodName = "gmatch"
-    // let propertyName = "pi"
-    // b.buildPair(b.createArray(with: [b.loadNumber(1), b.loadNumber(2)]))
-    // TODO: here and below, if we aren't finding arguments of compatible types, we probably still need a try-catch guard.
-    // let arguments = b.randomArguments(forCallingMethod: methodName, on: s)
-    // print(222)
-    // print(b.getMethodNumReturns(of: methodName, on: s))
-    // let v1 = b.callMethod(methodName, on: s, withArgs: arguments, numReturns: b.getMethodNumReturns(of: methodName, on: s))[0]
-    // b.buildForInLoop(v1){ _ in
-
-    // }
-    // print(b.type(of: s))
-    // let loopVar = b.loadNumber(0)
-    // let c1 = b.compare(loopVar, with: b.loadNumber(Float64.random(in: 1...10)), using: .lessThan) 
-    // var c2: Variable = b.loadNumber(0)
-    // b.buildWhileLoop({ 
-    //     c2 = b.compare(loopVar, with: b.loadNumber(Float64.random(in: 1...10)), using: .lessThan) 
-    //     return c1}, {
-    //         b.loadNumber(0)
-    //         b.compare(c2, with: b.loadNumber(Float64.random(in: 1...10)), using: .lessThan) 
-    // })
-    
-    // b.run(CodeGenerators.get("PropertyAssignmentGenerator"))
-    // b.run(CodeGenerators.get("PropertyUpdateGenerator"))
-    // b.run(CodeGenerators.get("PropertyRemovalGenerator"))
-    // b.createArray(with: [v1, v2])
-    // b.buildForLoop(i: {
-    //     b.buildLabel(b.nextLabel())
-    //     b.loadNumber(123)
-    //     return b.binary(b.loadNumber(5), b.loadNumber(0), with: BinaryOperator.Add)
-    // }, {  
-    //     b.loadNumber(123)
-        
-    //     return b.loadNumber(10)
-    // }, {
-    //     b.loadNumber(123)
-    //     return b.binary(b.loadNumber(5), b.loadNumber(15), with: BinaryOperator.Add)
-    // },  { v in
-    //     b.binary(v, b.loadNumber(0), with: BinaryOperator.Add)
-    // })
-    // b.buildGoto(b.randomLabel()!)
-    // let label = b.nextLabel()
-    // b.buildForLoop(i: { b.loadNumber(0) }, { b.loadNumber(Float64.random(in: 10...20))}, {b.loadNumber(1)}) { loopVar in
-    //     b.buildIf(b.compare(loopVar, with: b.loadNumber(5), using: .greaterThan)){
-    //         b.buildGoto(label)
-    //     }
-    // }
-    // b.buildLabel(label)
-    // print(b.dumpCurrentProgram())
-    // let p1 = b.finalize()
-    // print(fuzzer.lifter.lift(p1))
-
-    // let execution = fuzzer.execute(p1)
-    // let aspects = fuzzer.evaluator.evaluate(execution)
-    // let p2 = fuzzer.minimizer.minimize(p1, withAspects: aspects!)
-    // let mutator = InputMutator(isTypeAware: true)
-    // let p2 = mutator.mutate(p1, for: fuzzer)
-    // print(fuzzer.lifter.lift(p2!))
-    
-    // print(fuzzer.lifter.lift(p2))
-
-    
+    print(exec.outcome)    
+    }
 }
+
+func coverageTest(with fuzzer: Fuzzer){
+    let outdir = args[1]
+    let manager = FileManager.default
+    var contentsOfPath = try! manager.contentsOfDirectory(at: URL.init(string: outdir)!, includingPropertiesForKeys: [URLResourceKey.contentModificationDateKey])
+
+    contentsOfPath.sort(by: { lhs, rhs in
+        // let lhs_d = 
+        return try! (lhs.resourceValues(forKeys:[.contentModificationDateKey]).contentModificationDate!) < (try! rhs.resourceValues(forKeys:[.contentModificationDateKey]).contentModificationDate!)
+    })
+    fuzzer.sync{
+    // Always want some statistics.
+    fuzzer.addModule(Statistics())
+
+    // Exit this process when the main fuzzer stops.
+    fuzzer.registerEventListener(for: fuzzer.events.ShutdownComplete) { reason in
+        exit(reason.toExitCode())
+    }
+
+    if !FileManager.default.fileExists(atPath: "./test_coverage.txt") {
+        FileManager.default.createFile(atPath: "./test_coverage.txt", contents: nil, attributes: nil)
+    }
+
+    let fileHandle = FileHandle(forWritingAtPath: "./test_coverage.txt")!
+    fileHandle.write("mtime,edges\n".data(using: .utf8)!)
+    // Initialize the fuzzer, and run startup tests
+    fuzzer.initialize()
+    do {
+        for url in contentsOfPath{
+            let data = manager.contents(atPath: url.path)
+            if data == nil {
+                continue
+            }
+            let fileAttributes = try FileManager.default.attributesOfItem(atPath: url.path)
+            var mod = 0
+            if let modificationDate  = fileAttributes[FileAttributeKey.modificationDate] as? Date {
+                mod = Int(modificationDate.timeIntervalSince1970 )
+            }
+            let code = String(data: data!, encoding: String.Encoding.utf8) ?? ""
+            let execution = fuzzer.runner.run(code, withTimeout: 1000)
+            if execution.outcome == .succeeded{
+                let _ = fuzzer.evaluator.evaluate(execution)
+                fileHandle.write("\(mod), \(fuzzer.evaluator.found_edges)\n".data(using: .utf8)!)
+            }
+            
+        }
+    } catch let error as NSError {
+    print("Get attributes errer: \(error)")
+    }
+    try? fileHandle.close()
+
+    print(fuzzer.evaluator.currentScore)
+    }
 }
 // The configuration of this fuzzer.
 let configuration = Configuration(logLevel: .verbose)
@@ -287,7 +241,7 @@ let fuzzer = makeFuzzer(with: configuration)
 let ui = TerminalUI(for: fuzzer)
 
 if DebugTest { 
-    unitTest(with: fuzzer)
+    coverageTest(with: fuzzer)
     exit(0)
 }
 
